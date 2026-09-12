@@ -1492,3 +1492,88 @@ trantor 的 `AsyncStream::send()` 在连接断开后仍返回 true，所以"客�
 完整清单见 `docs/performance.md` §8 与 README「测试环境与限制」：全部测量在本机回环完成
 （无真实局域网数据）、单实例、无长稳压测、P99 样本量有限、TSan/UBSan 未运行、
 上传吞吐受测试客户端进程开销限制。
+
+
+## 27. 阶段十五实施记录（2026-09-12）
+
+阶段十五是**容器化、部署与数据备份**。任务书 21 条：19 条已落地并实测，2 条受限（见 27.5）。
+
+### 27.1 镜像与编排（第 1～8 条）
+
+| 项 | 落地情况 |
+|---|---|
+| 多阶段构建 | builder（Ubuntu 24.04 + vcpkg 源码编译）→ runtime（只带 `ca-certificates`/`curl`/`libpq5`），builder 不进最终镜像 |
+| 镜像体积 | builder 阶段 `strip` 二进制；新增 `.dockerignore`（此前构建上下文会把本地 `build/`、`vcpkg_installed/`、`node_modules/` 一起送进 daemon） |
+| 非 root | runtime `useradd --uid 10001 lanfilehub` + `USER lanfilehub`；对象目录 `chown` 给该用户 |
+| 编排 | 5 个服务：`postgres`、`redis`、`migrate`、`backend`、`frontend`（另加 `init-admin` 走 profile） |
+| 健康检查 | postgres `pg_isready`、redis `redis-cli ping`、backend 镜像内 `HEALTHCHECK /health/live`、frontend `wget` |
+| 启动依赖 | backend `depends_on: postgres/redis(service_healthy) + migrate(service_completed_successfully)` |
+| 数据卷 | `postgres_data`、`redis_data`、`storage_data`（对象存储）；数据库/Redis 端口只绑 `127.0.0.1` |
+| 依赖裁剪 | `benchmark` 从必备依赖改成 vcpkg **可选 feature**（服务镜像不需要；它在 x64-linux 上编译失败过），本地 CMakePresets 默认启用该 feature |
+
+### 27.2 迁移与管理员初始化（第 9、10 条）
+
+- `scripts/migrate.ps1`（本地 `-InContainer` 走容器）；compose 的 `migrate` 服务做一次性迁移，
+  成功退出后 backend 才启动——**应用进程不改 schema**。
+- 镜像内同时带 `lan_file_hub_migrate` 与 `migrations/`，生产不必挂源码。
+- 迁移工具新增 `--create-admin / --admin-email / --admin-password-env`：
+  口令**只从环境变量读**（不进命令行历史、不进仓库）；未设置或过短直接退出码 1；
+  已存在同名用户则提升为 ADMIN（不改口令），已是 ADMIN 时幂等跳过。
+  实测：创建 `probeadmin` → 库里 `role=ADMIN`、`password_hash LIKE '$argon2id$%'`；重复执行提示"已是管理员"。
+
+### 27.3 备份与恢复（第 11～13 条）
+
+- `scripts/backup.ps1`：`pg_dump -Fc` + 对象存储归档 + `manifest.json`（大小/**SHA-256**/迁移版本/关键表行数）。
+  对象存储按四级回退识别：显式卷 → `storage_data` 卷 → 运行中的 backend 容器 → **本地 `storage/` 目录**（本机开发）。
+- `scripts/restore.ps1`：恢复前核对清单 SHA-256；**默认演练模式**恢复到临时库（不碰现有数据），
+  `-Force` 才就地覆盖且**先自动备份当前状态**；对象存储先解到临时目录再替换。
+- 实测：备份 → 演练恢复，临时库得到 11 张表 / 8 个迁移版本 / 行数与清单一致；
+  归档内的标记文件被正确解出（`storage-staging/objects/zz/backup-marker.txt`）。
+
+### 27.4 文档与生产配置（第 14～17、21 条）
+
+`docs/deployment.md` 新增「阶段十五落地记录」（服务表、卷表、迁移与管理员命令、备份恢复用法与取舍、
+nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/nginx.conf.example`（HTTP→HTTPS 跳转、
+`client_max_body_size 128m`、`proxy_request_buffering off`、`X-Forwarded-*` 透传、`/metrics` 白名单）；
+`.env.example` 补编排与初始化管理员的示例值（口令留空，仓库里不放真实口令）；README 补迁移/备份/恢复命令。
+
+### 27.5 未验证与受限项（第 18～20 条）
+
+| 项 | 状态 |
+|---|---|
+| `docker compose config` | ✅ 通过（5 服务 + 依赖条件） |
+| 重启容器后数据仍在 | ✅ 实测：`docker compose restart postgres` 前后 `schema_migrations` 均 8 行 |
+| 备份/恢复演练 | ✅ 见 27.3 |
+| **删除并重建 backend 容器后文件仍在** | ⚠️ **未完成验证**：需要先构建后端镜像（在 Linux 容器内从源码编译整套 C++ 依赖）。构建过程中排掉三个环境问题：① 容器 DNS 解析不了外网 → 给 Dockerfile 加可选代理构建参数并经宿主代理构建；② `benchmark` 在 x64-linux 编译失败 → 改为可选 feature；③ `libpq` 需要 perl → builder 安装 `perl bison flex`。已在后台继续构建，**跑完之前这一条记为未验证** |
+| 前端镜像构建 | 未执行（同样依赖容器内网络；前端构建本身在宿主机已通过 `npm run build`） |
+
+## 28. 阶段十六实施记录（2026-09-12）
+
+阶段十六是**发布准备**。任务书 28 条：25 条已落地，3 条受限（LICENSE、远程仓库、CI 实际执行）。
+
+### 28.1 README 与文档（第 1～16、18～22、28 条）
+
+| 项 | 落地情况 |
+|---|---|
+| 界面截图（第 17 条） | **10 张真实截图**（`docs/images/`）：登录、注册、我的文件、上传、回收站、分享给我的、系统管理（用户/审计）、公开分享、指标端点。由 `frontend/tests/e2e/screenshots.spec.ts` 用真实浏览器打开真实服务截取，**不是画的**；9 个截图用例通过 |
+| 系统架构图（第 3 条） | README 新增分层 ASCII 图（HTTP 层 → 应用服务层 → 领域层 → PostgreSQL/Redis/ObjectStorage） |
+| README 章节 | 简介、产品场景、核心功能、技术栈、架构、目录结构、快速启动（本地/Docker/前端）、迁移、默认管理员、API 示例、上传与断点续传、权限模型、异常恢复、测试方法、性能测试（指向 `docs/performance.md`，不编造数字）、安全说明、数据持久化、备份恢复、已知限制、路线图、License 章节 |
+| 新增文件 | `CONTRIBUTING.md`、`SECURITY.md`（含私下报告渠道与"设计上的已知边界"）、`CHANGELOG.md`（0.1.0 + 未发布）、`docs/release-checklist.md`（6 大类检查项 + 最近一次执行记录） |
+| CI（第 26 条） | 新增缺失的 `.github/workflows/frontend.yml`（类型检查 + lint + Vitest + 构建）；`backend.yml`、`docker.yml` 已存在并在本地跑过等价命令 |
+
+### 28.2 仓库卫生（第 23～25 条）
+
+- **首次 `git init`**（此前项目没有本地仓库），默认分支 `main`，首次提交 306 个文件、`.git` 约 5.6 MB。
+- **发现并修掉两个忽略规则漏洞**：`/backups/`（含数据库转储与用户文件）与 `/vcpkg_installed_asan/`
+  （阶段十四新增的 ASan 依赖树，曾误提交 1875 个文件）都没被忽略；`deploy/certs/`、`*.pem`、`*.key` 也一并加上。
+- 敏感信息扫描：无硬编码密钥；命中的都来自测试夹具里的假值、未被跟踪的 `.env` 与 `.env.example` 的空值。
+- TODO 扫描：没有未说明的 TODO/FIXME（命中的都是注释里的 `xxx` 占位说明）。
+- 提交内最大文件 171 KB（`package-lock.json`）；截图合计约 300 KB，无大体积产物。
+
+### 28.3 未完成项（需要用户决定或外部条件）
+
+| # | 事项 | 原因 |
+|---|---|---|
+| 1 | **LICENSE** | 许可证类型未定（项目 `AGENTS.md` 待确认事项 #1）。按规则**不得擅自选择**，也不创建空许可证文件；未创建 |
+| 2 | **GitHub 远程仓库创建与推送** | 全局 `AGENTS.md` 要求：对某账号**首次**创建远程仓库前必须确认；本地仓库与首次提交已就绪，随时可推 |
+| 3 | **CI 实际执行** | 工作流已写好、等价命令已在本地全绿，但 GitHub Actions 只有推送后才能验证 |

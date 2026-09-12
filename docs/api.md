@@ -665,6 +665,9 @@ GET    /api/v1/resources/{resource_id}/shares
 DELETE /api/v1/shares/{share_id}
 GET    /api/v1/public/shares/{token}
 GET    /api/v1/public/shares/{token}/download
+
+# 别人分享给我的资源（含权限级别；只返回仍有效、且我是被授权人的记录）
+GET    /api/v1/shared-with-me
 ```
 
 要点：
@@ -725,6 +728,9 @@ GET    /api/v1/resources/{resource_id}/shares
 DELETE /api/v1/shares/{share_id}
 GET    /api/v1/public/shares/{token}
 GET    /api/v1/public/shares/{token}/download
+
+# 别人分享给我的资源（含权限级别；只返回仍有效、且我是被授权人的记录）
+GET    /api/v1/shared-with-me
 ```
 
 创建分享（需要 OWNER）：
@@ -874,3 +880,28 @@ GET /metrics      # Prometheus 文本格式，text/plain; version=0.0.4
   `lan_file_hub_upload_chunk_retries_total`、`lan_file_hub_downloads_total`、`lan_file_hub_active_uploads`、
   `lan_file_hub_storage_used_bytes`、`lan_file_hub_storage_free_bytes`、`lan_file_hub_background_jobs_total`、
   `lan_file_hub_health_status`。
+
+
+## 健康检查端点
+
+```text
+GET /health/live      # 存活：只表示进程在运行，不依赖任何外部组件
+GET /health/ready     # 就绪：逐个检查必要依赖，任一不可用返回 503
+```
+
+```json
+GET /health/ready
+{
+  "status": "ok",
+  "check": "ready",
+  "components": [
+    { "name": "postgresql", "required": true, "status": "ok", "latency_ms": 1, "detail": "" },
+    { "name": "redis", "required": true, "status": "ok", "latency_ms": 0, "detail": "" },
+    { "name": "object_storage", "required": true, "status": "ok", "latency_ms": 0, "detail": "" }
+  ],
+  "request_id": "…"
+}
+```
+
+- 两个端点**都不需要认证**（供容器与负载均衡探针使用），只返回组件状态与延迟，不含凭据。
+- `detail` 已脱敏（不含连接串、口令、绝对路径）。
