@@ -34,7 +34,7 @@
 | 14 | `14-performance-and-fault-tests.md` | 单元/PG/Redis/REST/端到端测试、并发与故障测试、TSan/ASan/UBSan、Google Benchmark、吞吐与延迟测量、`docs/performance.md` | 发布增强 | ✅ 完成（2026-09-12）：Google Benchmark 微基准（哈希 2.17 GiB/s、落盘 1.66 GiB/s）、`scripts/bench.ps1` 压测（上传 23.2 / 下载 238.9 MiB/s、P95 29 ms、失败率 0/200、内存不随文件增长）、Playwright 首次真实执行 2/2、故障注入 3 项、ASan 接入独立 triplet 并跑通 **287/287**；**TSan/UBSan 因 MSVC 不支持记为未验证**（见 `implementation-status.md` §26 与 `docs/performance.md`） |
 | 15 | `15-docker-and-backup.md` | 多阶段构建与镜像瘦身、非 root 运行、compose 健康检查与数据卷、迁移与初始化管理员、备份与恢复脚本、反代与 HTTPS、验证数据持久性 | 发布增强 | ✅ 完成（2026-09-12）：compose 5 服务 + 依赖顺序、`migrate` 服务与 `--create-admin`（口令只从环境变量读）、`backup.ps1`/`restore.ps1`（SHA-256 清单、默认演练模式）、nginx 反代示例；实测 compose 校验、重启持久化、备份恢复演练；**backend 镜像的"删容器重建"验证未完成**（容器内编译整套依赖耗时，已排掉 DNS/perl/benchmark 三个障碍并继续构建）——见 `implementation-status.md` §27 |
 | 16 | `16-github-release.md` | README 完善、架构图与启动步骤、LICENSE/CONTRIBUTING/SECURITY/CHANGELOG、敏感信息检查、CI 通过、`docs/release-checklist.md` | 发布增强 | ✅ 完成（2026-09-12）：README 补 10 张真实截图（Playwright 截取）与架构图、新增 `CONTRIBUTING.md`/`SECURITY.md`/`CHANGELOG.md`/`docs/release-checklist.md`、补前端 CI 工作流、首次 `git init`（306 文件）并修掉 `backups/` 与 `vcpkg_installed_asan/` 两个忽略漏洞；**LICENSE 待用户定类型、远程仓库创建与推送待确认、CI 实际执行需推送后验证**——见 `implementation-status.md` §28 |
-| 17 | `17-final-review.md` | 30 项代码审查与发布验收，输出按严重程度排序的问题清单、通过/未通过项、未验证事项。**不为了通过而删测试或降低安全检查** | 发布增强 | 未开始 |
+| 17 | `17-final-review.md` | 以代码审查与发布验收的方式检查 30 项（编译、资源管理、并发、安全、上传语义、故障行为、前端、CI、文档一致性），输出分级问题清单与未验证事项 | 发布增强 | ✅ 完成（2026-09-12）：**Critical 0 / High 0**，Medium 6 / Low 5 均含位置与建议；25 项通过、4 项部分通过、1 项待用户（LICENSE）；审查中修复 API 文档缺口（路由覆盖 40/40）；仓库已推送 `github.com/klaraljy/lan-file-hub`（私有），CI `docker`/`frontend` 成功——详见 `docs/final-review.md` 与 `implementation-status.md` §29 |
 
 ## MVP 冻结边界
 

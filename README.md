@@ -478,6 +478,8 @@ cd frontend; npm test                  # 前端：Vitest，共 111 个用例
 | [`docs/permissions.md`](docs/permissions.md) | 权限模型与分享链接 |
 | [`docs/security.md`](docs/security.md) | 安全要求与必测攻击场景 |
 | [`docs/recovery.md`](docs/recovery.md) | 故障处置、后台任务、备份恢复 |
+| [`docs/final-review.md`](docs/final-review.md) | 最终审查与验收报告（阶段十七：30 项逐条结论与分级问题） |
+| [`docs/release-checklist.md`](docs/release-checklist.md) | 发布检查清单（构建/测试/部署/安全/文档/产物） |
 | [`docs/frontend.md`](docs/frontend.md) | 页面、状态机、上传算法 |
 | [`docs/testing.md`](docs/testing.md) | 测试清单与验收标准 |
 | [`docs/deployment.md`](docs/deployment.md) | 配置、容器、部署、发布 |

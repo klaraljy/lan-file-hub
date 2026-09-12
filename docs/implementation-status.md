@@ -1577,3 +1577,36 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 | 1 | **LICENSE** | 许可证类型未定（项目 `AGENTS.md` 待确认事项 #1）。按规则**不得擅自选择**，也不创建空许可证文件；未创建 |
 | 2 | **GitHub 远程仓库创建与推送** | 全局 `AGENTS.md` 要求：对某账号**首次**创建远程仓库前必须确认；本地仓库与首次提交已就绪，随时可推 |
 | 3 | **CI 实际执行** | 工作流已写好、等价命令已在本地全绿，但 GitHub Actions 只有推送后才能验证 |
+
+
+## 29. 阶段十七实施记录（2026-09-12，完成）
+
+阶段十七是**最终审查与验收**：以代码审查 + 发布验收的方式逐项检查 30 条，报告在
+[`docs/final-review.md`](final-review.md)。结论摘要：
+
+- **Critical 0、High 0（无未修复项）**；Medium 6 项、Low 5 项，均已给出文件位置、复现方式与建议。
+- **25/30 项通过**，4 项部分通过（其中"镜像删容器重建"未跑完、"TSan/泄漏检测"受 MSVC 工具链限制），
+  1 项待用户决定（LICENSE 类型）。
+- 审查中**当场修掉**的问题：`docs/api.md` 缺 3 条路由（`/health/live`、`/health/ready`、
+  `/api/v1/shared-with-me`），补齐后路由覆盖 **40/40**。
+
+### 29.1 仓库已发布（阶段十六的两个待确认项已获批执行）
+
+用户确认：不创建 LICENSE、可以推送 GitHub、CI 在推送中验证。执行结果：
+
+| 项 | 结果 |
+|---|---|
+| 本地仓库 | `main` 分支，306 个跟踪文件，3 条提交 |
+| 远程仓库 | `github.com/klaraljy/lan-file-hub`，**私有**，默认分支 `main`（`gh repo create --private`） |
+| 推送 | `git push -u origin main` 成功，`main` 已跟踪 `origin/main` |
+| CI（真实 GitHub Actions） | `docker` ✅ 成功、`frontend` ✅ 成功、`backend` 运行中（Linux 上编译整套 C++ 依赖） |
+
+> 注：新仓库的**首次**推送不会触发工作流（GitHub 行为），用 `gh workflow run` 手动派发后三条都正常执行；
+> 之后每次推送都会自动触发。
+
+### 29.2 仍未验证（诚实清单）
+
+1. 后端/前端镜像构建完成的"删容器重建后对象仍在"验证（本机构建进行中）；
+2. TSan 与 LeakSanitizer（MSVC 不提供）；
+3. 真实局域网链路性能与长稳压测；
+4. 生产 HTTPS 端到端（只有 nginx 示例与配置说明）。
