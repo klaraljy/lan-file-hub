@@ -1,29 +1,24 @@
 name: backend
 
-# 阶段一：编译 + 单元测试 + 格式检查。
 # 注意：CMakePresets.json 里的 vcpkg toolchain 是 Windows 本机路径，
-# 所以 CI 不走预设，改用显式 -D 参数。
-# 首次运行要编译 drogon 等依赖，耗时较长；之后的运行走二进制缓存。
-
+# 所以 CI 里不用 presets，直接给 cmake 传参数（见下面的「配置」步骤）。
 on:
   push:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'migrations/**'
       - 'CMakeLists.txt'
       - 'vcpkg.json'
       - '.github/workflows/backend.yml'
   pull_request:
     paths:
       - 'backend/**'
+      - 'migrations/**'
       - 'CMakeLists.txt'
       - 'vcpkg.json'
       - '.github/workflows/backend.yml'
   workflow_dispatch:
-
-env:
-  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-  VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/vcpkg-cache,readwrite'
 
 jobs:
   format:
@@ -32,13 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装 clang-format
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format
+      - name: 安装 clang-format（固定 19.1.0）
+        # 必须与开发机版本一致：不同版本的换行对齐与 CJK 宽度判定不同，
+        # 会出现"本地通过、CI 失败"（曾经真的踩到过）。
+        run: python3 -m pip install --user 'clang-format==19.1.0'
 
       - name: 检查格式
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          clang-format --version
           mapfile -t files < <(git ls-files 'backend/**.cpp' 'backend/**.h' 'backend/**.hpp')
           if [ ${#files[@]} -eq 0 ]; then
             echo "没有 C++ 源文件，跳过"
@@ -49,6 +46,29 @@ jobs:
   build-and-test:
     name: build & test
     runs-on: ubuntu-24.04
+    # 集成测试打真实数据库：用服务容器跑，避免"没有 DB 就跳过"的假通过
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lan_file_hub
+          POSTGRES_PASSWORD: lan_file_hub_ci
+          POSTGRES_DB: lan_file_hub
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U lan_file_hub -d lan_file_hub"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      # 集成测试的数据库/缓存配置（测试也会读 .env，见下面「准备测试配置」）
+      DATABASE_URL: postgresql://lan_file_hub:lan_file_hub_ci@127.0.0.1:5432/lan_file_hub
+      REDIS_URL: redis://127.0.0.1:6379/0
+      LAN_FILE_HUB_REQUIRE_DB: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -79,6 +99,20 @@ jobs:
 
       - name: 编译
         run: cmake --build build/debug
+
+      - name: 准备测试配置并跑迁移
+        run: |
+          # 测试夹具读 .env；这里的口令只用于 CI 的一次性数据库
+          cat > .env <<'EOF'
+          APP_ENV=test
+          HTTP_PORT=8080
+          DATABASE_URL=postgresql://lan_file_hub:lan_file_hub_ci@127.0.0.1:5432/lan_file_hub
+          REDIS_URL=redis://127.0.0.1:6379/0
+          STORAGE_ROOT=./storage
+          JWT_SECRET=ci-only-secret-not-used-anywhere-else-0123456789
+          EOF
+          mkdir -p storage
+          ./build/debug/bin/lan_file_hub_migrate --migrations migrations --env-file .env
 
       - name: 测试
         run: ctest --test-dir build/debug --output-on-failure
