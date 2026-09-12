@@ -1,0 +1,37 @@
+# Docker 构建上下文排除项（阶段十五第 2 条：镜像体积与构建时间）。
+# 没有这个文件时，构建上下文会把本地构建产物与 vcpkg 依赖树一起送进 daemon（数 GB）。
+
+# 本地构建产物
+/build/
+/out/
+/dist/
+
+# vcpkg 依赖树（容器内会重新装 Linux 版依赖）
+/vcpkg_installed/
+/vcpkg_installed_asan/
+/vcpkg-overlays/
+
+# 前端依赖与产物（前端镜像有自己的上下文：frontend/）
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+
+# 运行期数据与本地环境（绝不进镜像）
+/storage/
+/backups/
+/deploy/certs/
+.env
+.env.*
+*.log
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# 文档与测试（运行时用不到，减小上下文）
+docs/
+scripts/
+_tmp/

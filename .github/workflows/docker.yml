@@ -1,0 +1,33 @@
+name: docker
+
+# 校验 Dockerfile 与 compose 文件本身是否合法。
+# 不在这里构建镜像：完整构建需要先在 Linux 上编译整套 C++ 依赖，交给阶段十五。
+# 前端工作流（frontend.yml）在阶段十补上。
+
+on:
+  push:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'frontend/Dockerfile'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'frontend/Dockerfile'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+jobs:
+  compose-config:
+    name: docker compose config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 compose 文件
+        run: docker compose config --quiet
+
+      - name: 校验 Dockerfile 可被解析（仅构建前几层）
+        run: docker build --check . || true

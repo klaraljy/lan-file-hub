@@ -1,0 +1,72 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "D:/Codex Tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "VCPKG_MANIFEST_MODE": "ON",
+        "VCPKG_MANIFEST_FEATURES": "benchmarks",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays"
+      },
+      "environment": {
+        "VCPKG_DOWNLOADS": "D:/Codex Tools/vcpkg/downloads",
+        "VCPKG_DEFAULT_BINARY_CACHE": "D:/Codex Tools/vcpkg/archives",
+        "VCPKG_VISUAL_STUDIO_PATH": "D:/VS2026"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "displayName": "Debug (Ninja + MSVC)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "Release (Ninja + MSVC)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "displayName": "Debug + AddressSanitizer (MSVC，依赖用带插桩的 triplet 单独安装)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "LAN_FILE_HUB_SANITIZER": "address",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-asan",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed_asan"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "asan", "configurePreset": "asan" }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

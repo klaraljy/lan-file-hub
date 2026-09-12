@@ -1,0 +1,65 @@
+# lan-file-hub 静态检查规则
+#
+# 命名基线：Google C++ Style Guide（全局 AGENTS.md §8）
+#   类型 / 函数 / 方法：PascalCase
+#   变量 / 参数 / 成员：snake_case（私有成员后缀 _）
+#   常量：k 前缀 + PascalCase
+#   全局变量：g_ 前缀 + snake_case
+#
+# 本机注意：clang-tidy 是 LLVM 19.1.0，而 VS2026 的 STL 要求 Clang 20+，
+# 必须加 --extra-arg=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH 才能解析 STL 头文件
+# （见 scripts/lint.ps1）。
+---
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  cppcoreguidelines-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'lan_file_hub/.*'
+
+CheckOptions:
+  # ---- 命名（Google C++ Style）----
+  - { key: readability-identifier-naming.NamespaceCase,          value: lower_case }
+  - { key: readability-identifier-naming.ClassCase,              value: CamelCase }
+  - { key: readability-identifier-naming.StructCase,             value: CamelCase }
+  - { key: readability-identifier-naming.UnionCase,              value: CamelCase }
+  - { key: readability-identifier-naming.EnumCase,               value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantCase,       value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantPrefix,     value: 'k' }
+  - { key: readability-identifier-naming.FunctionCase,           value: CamelCase }
+  - { key: readability-identifier-naming.MethodCase,             value: CamelCase }
+  - { key: readability-identifier-naming.VirtualMethodCase,      value: CamelCase }
+  - { key: readability-identifier-naming.VariableCase,           value: lower_case }
+  - { key: readability-identifier-naming.LocalVariableCase,      value: lower_case }
+  - { key: readability-identifier-naming.GlobalVariableCase,     value: lower_case }
+  - { key: readability-identifier-naming.GlobalVariablePrefix,   value: 'g_' }
+  - { key: readability-identifier-naming.ParameterCase,          value: lower_case }
+  - { key: readability-identifier-naming.MemberCase,             value: lower_case }
+  - { key: readability-identifier-naming.PublicMemberCase,       value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberCase,      value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberSuffix,    value: '_' }
+  - { key: readability-identifier-naming.ProtectedMemberSuffix,  value: '_' }
+  - { key: readability-identifier-naming.ConstexprVariableCase,  value: CamelCase }
+  - { key: readability-identifier-naming.ConstexprVariablePrefix, value: 'k' }
+  - { key: readability-identifier-naming.GlobalConstantCase,     value: CamelCase }
+  - { key: readability-identifier-naming.GlobalConstantPrefix,   value: 'k' }
+  - { key: readability-identifier-naming.TypeAliasCase,          value: CamelCase }
+  - { key: readability-identifier-naming.TypedefCase,            value: CamelCase }
+  - { key: readability-identifier-naming.MacroDefinitionCase,    value: UPPER_CASE }
+  # 与 .clang-format 的行宽保持一致
+  - { key: readability-line-length.LineLength,                   value: 100 }

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "lan-file-hub",
+  "version-string": "0.1.0",
+  "description": "局域网文件同步与团队文件服务：C++20 后端",
+  "homepage": "https://github.com/klaraljy/lan-file-hub",
+  "dependencies": [
+    "drogon",
+    "libpqxx",
+    "hiredis",
+    "spdlog",
+    "fmt",
+    "nlohmann-json",
+    "openssl",
+    "gtest",
+    "argon2",
+    "jwt-cpp"
+  ],
+  "features": {
+    "benchmarks": {
+      "description": "微基准（阶段十四）：只给开发机用；服务镜像不需要它，避免在 x64-linux 上多编一个端口",
+      "dependencies": [
+        "benchmark"
+      ]
+    }
+  }
+}

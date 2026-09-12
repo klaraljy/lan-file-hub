@@ -1,0 +1,145 @@
+# lan-file-hub 本地依赖服务与服务编排（阶段十五完善）。
+#
+# 常用命令：
+#   docker compose up -d postgres redis        # 只起依赖（本机开发用这个）
+#   docker compose up -d --build               # 起全套：依赖 + 迁移 + 后端 + 前端
+#   docker compose run --rm migrate            # 单独执行数据库迁移
+#   docker compose --profile admin run --rm init-admin   # 初始化第一个管理员
+#
+# 安全约定：
+#   - 数据库口令与 JWT_SECRET 只从 .env 读取，不写在本文件里，也不进仓库；
+#   - .env.example 只有示例值；默认开发口令仅用于本机，部署后必须修改；
+#   - 生产环境请通过反向代理暴露 HTTPS（见 docs/deployment.md）。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lan-file-hub-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lan_file_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lan_file_hub_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-lan_file_hub}
+    ports:
+      # 只监听本机：不要把数据库直接暴露到局域网
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lan_file_hub} -d ${POSTGRES_DB:-lan_file_hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: lan-file-hub-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # 数据库迁移：独立一次性服务，成功退出后 backend 才启动。
+  # 应用进程不改 schema（docs/deployment.md 有说明），迁移工具随镜像发布。
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lan-file-hub-backend:local
+    container_name: lan-file-hub-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lan_file_hub}:${POSTGRES_PASSWORD:-lan_file_hub_dev}@postgres:5432/${POSTGRES_DB:-lan_file_hub}
+    entrypoint: ["/app/lan_file_hub_migrate"]
+    command: ["--migrations", "/app/migrations", "--env-file", "/dev/null"]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lan-file-hub-backend:local
+    container_name: lan-file-hub-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      HTTP_PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lan_file_hub}:${POSTGRES_PASSWORD:-lan_file_hub_dev}@postgres:5432/${POSTGRES_DB:-lan_file_hub}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /data/storage
+      JWT_SECRET: ${JWT_SECRET:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      MIN_FREE_DISK_BYTES: ${MIN_FREE_DISK_BYTES:-1073741824}
+      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES:-10737418240}
+      MAX_USER_STORAGE_BYTES: ${MAX_USER_STORAGE_BYTES:-21474836480}
+      DOWNLOAD_RATE_LIMIT: ${DOWNLOAD_RATE_LIMIT:-0}
+      LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
+      LOGIN_IP_RATE_LIMIT_PER_MINUTE: ${LOGIN_IP_RATE_LIMIT_PER_MINUTE:-60}
+      UPLOAD_RATE_LIMIT_PER_MINUTE: ${UPLOAD_RATE_LIMIT_PER_MINUTE:-120}
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    volumes:
+      - storage_data:/data/storage
+    # 容器内 HEALTHCHECK 已在 Dockerfile 里定义（/health/live）
+    restart: unless-stopped
+
+  # 初始化第一个管理员：只在显式指定 profile 时运行，口令从 .env 读，不落仓库。
+  #   docker compose --profile admin run --rm init-admin
+  init-admin:
+    image: lan-file-hub-backend:local
+    profiles: ["admin"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lan_file_hub}:${POSTGRES_PASSWORD:-lan_file_hub_dev}@postgres:5432/${POSTGRES_DB:-lan_file_hub}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        /app/lan_file_hub_migrate --migrations /app/migrations --env-file /dev/null
+        --create-admin "$${INITIAL_ADMIN_USERNAME:?请在 .env 里设置 INITIAL_ADMIN_USERNAME}"
+        --admin-email "$${INITIAL_ADMIN_EMAIL:?请在 .env 里设置 INITIAL_ADMIN_EMAIL}"
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lan-file-hub-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:

@@ -1,0 +1,50 @@
+# lan-file-hub 格式化规则
+# 基线 Google C++ Style Guide（全局 AGENTS.md §8），项目级调整见下面的注释。
+---
+Language: Cpp
+BasedOnStyle: Google
+
+Standard: c++20
+ColumnLimit: 100
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+
+AccessModifierOffset: -1
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+
+BreakBeforeBraces: Attach
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+NamespaceIndentation: None
+
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+
+SpaceBeforeParens: ControlStatements
+SpacesBeforeTrailingComments: 2
+FixNamespaceComments: true
+
+# 注释里含中文，禁止自动重排，避免把整段注释改花
+ReflowComments: false
+
+# 头文件顺序：本文件对应的头、C 系统、C++ 标准库、第三方、本项目
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<[a-z_]+\.h>'
+    Priority: 2
+  - Regex: '^<[a-z_]+>'
+    Priority: 3
+  - Regex: '^<(drogon|spdlog|nlohmann|pqxx|hiredis|gtest)/'
+    Priority: 4
+  - Regex: '^<'
+    Priority: 5
+  - Regex: '^"lan_file_hub/'
+    Priority: 6

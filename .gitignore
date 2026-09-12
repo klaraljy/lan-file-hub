@@ -1,0 +1,57 @@
+# ---- 构建产物 ----
+/build/
+/out/
+/dist/
+/vcpkg_installed/
+# AddressSanitizer 专用依赖树（阶段十四：独立 triplet 装的那套）
+/vcpkg_installed_asan/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+
+# ---- 前端 ----
+node_modules/
+/frontend/dist/
+/frontend/.vite/
+*.tsbuildinfo
+
+# ---- 凭据与本地配置：绝不提交 ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# ---- 运行时数据 ----
+/storage/
+/data/
+*.log
+*.tmp
+*.bak
+
+# ---- 工具与编辑器 ----
+.vs/
+.vscode/
+.idea/
+.cache/
+compile_commands.json
+
+# ---- 测试与临时产物 ----
+/coverage/
+Testing/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+# 备份产物：含数据库转储与用户文件，绝不提交
+/backups/
+**/pre-restore/
+# 反向代理证书与私钥
+/deploy/certs/
+*.pem
+*.key

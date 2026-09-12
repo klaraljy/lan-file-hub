@@ -1,0 +1,84 @@
+name: backend
+
+# 阶段一：编译 + 单元测试 + 格式检查。
+# 注意：CMakePresets.json 里的 vcpkg toolchain 是 Windows 本机路径，
+# 所以 CI 不走预设，改用显式 -D 参数。
+# 首次运行要编译 drogon 等依赖，耗时较长；之后的运行走二进制缓存。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/vcpkg-cache,readwrite'
+
+jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: 检查格式
+        run: |
+          mapfile -t files < <(git ls-files 'backend/**.cpp' 'backend/**.h' 'backend/**.hpp')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "没有 C++ 源文件，跳过"
+            exit 0
+          fi
+          clang-format --dry-run --Werror --style=file "${files[@]}"
+
+  build-and-test:
+    name: build & test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装构建工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build curl zip unzip tar pkg-config
+
+      - name: 缓存 vcpkg 二进制产物
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
+
+      - name: 安装 vcpkg
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: 配置
+        run: |
+          cmake -S . -B build/debug -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: 编译
+        run: cmake --build build/debug
+
+      - name: 测试
+        run: ctest --test-dir build/debug --output-on-failure

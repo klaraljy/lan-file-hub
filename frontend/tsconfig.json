@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["vitest/globals", "node"],
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"],
+  // 端到端用例依赖 @playwright/test，而它当前装不上（需要联网 npm install），
+  // 所以把 tests/e2e 排除在类型检查之外：脚手架留在仓库里，但不阻塞 tsc。
+  // 装好 Playwright 后把这个 exclude 去掉即可恢复类型检查。
+  "exclude": ["tests/e2e"]
+}

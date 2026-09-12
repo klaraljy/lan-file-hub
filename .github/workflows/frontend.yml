@@ -1,0 +1,45 @@
+name: frontend
+
+# 前端质量门：与本地 `npm test` / `npm run lint` / `npx tsc --noEmit` / `npm run build` 等价。
+# 端到端（Playwright）需要真实后端与数据库，放在手动触发里，避免每次 PR 都拉起整套依赖。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 类型检查 + 单测 + 构建
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci --no-fund --no-audit
+
+      - name: 类型检查
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: 代码检查
+        run: npm run lint
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 生产构建
+        run: npm run build

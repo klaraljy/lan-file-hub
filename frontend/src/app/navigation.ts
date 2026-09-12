@@ -1,0 +1,52 @@
+/**
+ * 左侧导航的定义与高亮计算（docs/frontend.md §2.2 的五个入口）。
+ *
+ * selectedNavKey 是纯函数：给一个 pathname 返回应该高亮的菜单 key，
+ * 这样「进了 /files/xxx 时「我的文件」仍然高亮」这种规则可以被单测钉住。
+ */
+
+export interface NavItem {
+  key: string;
+  label: string;
+  /** 菜单项对应的图标名，由 AppLayout 映射成组件（这里不引入 React，保持纯数据） */
+  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin';
+}
+
+export const MAIN_NAV_ITEMS: readonly NavItem[] = [
+  { key: '/files', label: '我的文件', icon: 'folder' },
+  { key: '/recent', label: '最近文件', icon: 'clock' },
+  { key: '/shared', label: '分享给我的', icon: 'share' },
+  { key: '/trash', label: '回收站', icon: 'delete' },
+  { key: '/settings', label: '设置', icon: 'setting' },
+];
+
+/** 只有管理员可见的入口（阶段十三）。前端隐藏只是界面问题，权限判定在后端 */
+export const ADMIN_NAV_ITEM: NavItem = { key: '/admin', label: '系统管理', icon: 'admin' };
+
+/** 全部入口（含管理项）：高亮计算用它，这样 /admin 也能正确高亮 */
+const ALL_NAV_ITEMS: readonly NavItem[] = [...MAIN_NAV_ITEMS, ADMIN_NAV_ITEM];
+
+/** 按角色给出可见菜单：普通用户看不到管理入口 */
+export function navItemsForRole(role: string | undefined): readonly NavItem[] {
+  return role === 'ADMIN' ? [...MAIN_NAV_ITEMS, ADMIN_NAV_ITEM] : MAIN_NAV_ITEMS;
+}
+
+/**
+ * 根据当前路径判断应该高亮哪个菜单项。
+ * 目录详情页（/files/:folderId）也属于「我的文件」；未知路径不高亮任何项。
+ */
+export function selectedNavKey(pathname: string): string {
+  const path = pathname.split('?')[0] ?? '';
+  // 前缀匹配必须带上斜杠边界，避免 /files-old 被当成 /files
+  for (const item of ALL_NAV_ITEMS) {
+    if (path === item.key || path.startsWith(`${item.key}/`)) {
+      return item.key;
+    }
+  }
+  return '';
+}
+
+/** 公开分享页不需要应用外壳（无导航、无登录） */
+export function isPublicPath(pathname: string): boolean {
+  return pathname === '/s' || pathname.startsWith('/s/');
+}
