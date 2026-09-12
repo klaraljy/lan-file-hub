@@ -86,10 +86,13 @@ void RegisterHttpMetrics() {
     Metrics().IncrementCounter("lan_file_hub_http_requests_total", "按方法/路由/状态码统计的请求数",
                                {{"method", method}, {"route", route}, {"status", status}});
 
-    if (!req->attributes()->find(kStartKey)) {
+    // 取一次属性表并显式判空：GCC 的 -Wnull-dereference 会盯着"两次解引用同一指针"的写法
+    //（MSVC 不报，但 Linux 构建用 -Werror，必须写得没有歧义）
+    const auto attributes = req->attributes();
+    if (attributes == nullptr || !attributes->find(kStartKey)) {
       return;
     }
-    const auto start = req->attributes()->get<std::int64_t>(kStartKey);
+    const auto start = attributes->get<std::int64_t>(kStartKey);
     const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
                          std::chrono::steady_clock::now().time_since_epoch())
                          .count();
