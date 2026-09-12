@@ -262,12 +262,15 @@ ninja / node / npm / git / docker   已在 PATH
 
 ### 本机一键启动（用户日常用）
 
-- `scripts/start.ps1`：起 Docker 依赖 → 跑迁移 → 起后端 → 起前端 dev server → 打开浏览器；
-  桌面上有「启动 lan-file-hub.cmd」双击即用，另有「停止 lan-file-hub.cmd」。
-- `scripts/start.ps1 -NoBrowser / -NoFrontend / -Release` 可选；`scripts/stop.ps1 -WithDeps` 连容器一起停。
+- **桌面只有一个按钮**：`lan-file-hub.cmd` 双击进小菜单（1 启动 / 2 停止 / 3 状态 / 4 打开浏览器 / Q 退出，
+  回车即启动）。菜单逻辑在 `scripts/menu.ps1`，实际动作是 `scripts/start.ps1` 与 `scripts/stop.ps1`。
+- 也可命令行直用：`.\scripts\menu.ps1 -Action start|stop|status|open`；
+  `start.ps1 -Release / -NoBrowser / -NoFrontend`、`stop.ps1 -WithDeps`（连容器一起停）。
 - ⚠️ **不要把 `start.ps1` 的输出接进管道**（`.\scripts\start.ps1 | Select-Object ...`）：
   它启动的后台进程会一直持有那个管道句柄，外层会永远等下去（看起来像"卡死"）。
   要看输出就重定向到文件（`*> out.txt`）或直接在控制台里跑。
+- `menu.ps1` 在**非交互式**调用（stdin 被重定向）时会直接打印状态后退出，不进 `Read-Host` 菜单——
+  否则它会一直等输入，看起来像卡死（自动化测试踩到过）。
 - 排查启动问题：后端日志 `%TEMP%\lfh-backend.log`，前端日志 `%TEMP%\lfh-frontend.log`。
 
 ### 仍未验证（不要写成已完成）
