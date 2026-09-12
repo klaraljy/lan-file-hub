@@ -72,8 +72,9 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://lan_file_hub:lan_file_hub_ci@127.0.0.1:5432/lan_file_hub
-      REDIS_URL: redis://127.0.0.1:6379/0
+      # 注意：**不要**在这里设 DATABASE_URL / REDIS_URL / JWT_SECRET。
+      # 配置测试会写临时 .env 并断言文件里的值生效，作业级环境变量会盖住它们（CI 曾因此失败）。
+      # 数据库连接由下面「准备测试配置并跑迁移」步骤写出的 .env 提供。
       # 让"数据库不可用"从静默跳过变成失败
       LAN_FILE_HUB_REQUIRE_DB: '1'
     steps:
