@@ -1,6 +1,7 @@
 #include "api/http_metrics.h"
 
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -13,7 +14,9 @@
 namespace lan_file_hub {
 namespace {
 
-constexpr char kStartKey[] = "metrics_start_us";
+// 开始时间通过请求头带过来：属性表是 shared_ptr，GCC 的 -Wnull-dereference 会对
+// `req->attributes()->get<T>()` 误报（MSVC 不报，但 Linux 构建 -Werror 会直接失败）。
+constexpr char kStartHeader[] = "x-lfh-metrics-start-us";
 // 路由模板最长也就几十个字符；异常长的一律归档，避免标签值失控
 constexpr std::size_t kMaxRouteLabelLength = 96;
 
@@ -71,7 +74,7 @@ void RegisterHttpMetrics() {
     const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
                          std::chrono::steady_clock::now().time_since_epoch())
                          .count();
-    req->attributes()->insert(kStartKey, static_cast<std::int64_t>(now));
+    req->addHeader(std::string(kStartHeader), std::to_string(now));
     chain();
     (void)callback;
   });
@@ -86,13 +89,13 @@ void RegisterHttpMetrics() {
     Metrics().IncrementCounter("lan_file_hub_http_requests_total", "按方法/路由/状态码统计的请求数",
                                {{"method", method}, {"route", route}, {"status", status}});
 
-    // 取一次属性表并显式判空：GCC 的 -Wnull-dereference 会盯着"两次解引用同一指针"的写法
-    //（MSVC 不报，但 Linux 构建用 -Werror，必须写得没有歧义）
-    const auto attributes = req->attributes();
-    if (attributes == nullptr || !attributes->find(kStartKey)) {
-      return;
+    const std::string start_header = req->getHeader(std::string(kStartHeader));
+    std::int64_t start = 0;
+    const auto* begin = start_header.data();
+    const auto* end = start_header.data() + start_header.size();
+    if (start_header.empty() || std::from_chars(begin, end, start).ec != std::errc{}) {
+      return;  // 没埋到点（理论上不会发生）：不记耗时，但请求计数已经记了
     }
-    const auto start = attributes->get<std::int64_t>(kStartKey);
     const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
                          std::chrono::steady_clock::now().time_since_epoch())
                          .count();

@@ -21,6 +21,7 @@
 
 | # | 位置 | 问题 | 复现 | 建议 |
 |---|---|---|---|---|
+| M0 | `backend/src/api/http_metrics.cpp:92`（修复前） | **Linux(GCC) 构建抓到 MSVC 没报的空指针解引用告警**：`req->attributes()->find(...)` 后再 `req->attributes()->get<T>(...)`，GCC `-Wnull-dereference` 在 `-Werror` 下直接判定构建失败。**是这次 Docker 镜像构建才暴露出来的** | `docker compose build backend`（x64-linux 编译我们自己的代码时） | **已修复**：取一次 `attributes` 局部指针并显式判空后复用；MSVC 与 GCC 两侧构建均通过 |
 | M1 | `backend/tests/integration/trash_flow_test.cpp:665` | **集成测试与开发机上的服务端后台线程竞争 `cleanup_tasks`**：两者都会 `ClaimDue`，断言"一次领到几条"会偶发失败 | 开着后端服务跑全量 `ctest` | 已改为按自己的任务 identity 断言（连跑 6 次通过）；根因是"测试与开发库共用数据库"，建议 CI/本地都用独立库（CI 已用 service 容器，天然隔离） |
 | M2 | `frontend/src/features/files/viewState.ts`、`docs/frontend.md` §4.1/§4.2 | **上传状态命名歧义**：文档里 `retrying`/`cancelled` 与实现枚举不完全一致（阶段十已记录为未决） | 读文档 + 读枚举 | 统一枚举与文档用词，或明确"文档描述的是交互态、实现是持久态" |
 | M3 | `frontend/tests/e2e/core-flow.spec.ts` | **"刷新后恢复上传"只有单元测试，没有浏览器级验证**：`UploadManager.restore` 有 4 个单测，但没有"上传中刷新页面"的端到端用例 | `npm test` 可见单测；Playwright 套件里没有该场景 | 增加一个 Playwright 用例：上传大文件 → `page.reload()` → 断言任务被恢复并要求重选文件 |
@@ -65,7 +66,7 @@
 | 21 | 前端可完成主要操作 | ✅ | Playwright：注册→浏览→上传→下载→删除→回收站恢复→创建分享 2/2 通过；10 张真实截图 |
 | 22 | 前端状态处理 | ⚠️ 部分 | `PageState`（idle/loading/error/…）与上传任务状态机齐备并有单测；命名歧义见 M2 |
 | 23 | 刷新后可恢复上传 | ⚠️ 部分 | IndexedDB 持久化 + `UploadManager.restore` 4 个单测；缺浏览器级验证（M3） |
-| 24 | Docker Compose 可启动 | ⚠️ 部分 | `docker compose config` 通过；postgres/redis 启动并健康；重启后数据仍在；**backend 镜像构建未跑完**（见第 4 节） |
+| 24 | Docker Compose 可启动 | ✅ | `docker compose config` 通过；依赖与 `migrate` 服务退出码 0；backend 镜像构建成功，容器非 root（uid 10001）、`/health/live`+`/health/ready` 均 200；**删除并重建 backend 容器后文件 SHA-256 一致** |
 | 25 | CI 可运行 | ✅（已实测） | 三条工作流 `actionlint` 通过；仓库已推送，`docker` 与 `frontend` 工作流**运行成功**，`backend` 运行中（首推不触发是 GitHub 对新仓库首次推送的行为，手动 `workflow_dispatch` 验证通过） |
 | 26 | README 与代码一致 | ✅ | README 中 `scripts/*.ps1` 8 个全部存在、`npm run dev/build/test/lint` 均已定义、二进制路径与实际一致 |
 | 27 | API 文档与接口一致 | ✅（审查中修复） | 脚本对比 40 条路由：修复前缺 3 条，修复后 **40/40 覆盖** |
@@ -77,7 +78,7 @@
 
 | 项 | 状态 | 原因 |
 |---|---|---|
-| 24（部分） | ⏳ 未完成 | **后端镜像构建 + "删除并重建 backend 容器后文件仍在"**：镜像需在 Linux 容器内从源码编译整套 C++ 依赖，本机构建仍在进行（已排除容器 DNS、`benchmark` 端口、`libpq` 缺 perl 三个障碍）。**在构建完成并实测前，此项记为未验证** |
+| — | ✅ 已补齐 | 后端镜像已构建成功并完成"删容器重建"验证（见第 2 节第 24 项）；过程中 Linux/GCC 构建还抓出并修复了 3 个 MSVC 未报的可移植性缺陷 |
 | 6/3（部分） | ⏳ 未运行 | TSan / LeakSanitizer：MSVC 不提供，依赖为 MSVC 静态库无法混用 clang |
 | 18（外部） | ⏳ 待用户 | LICENSE 类型未定，按规则不擅自创建许可证文件 |
 | 25（部分） | ⏳ 观察中 | `backend` 工作流首次运行（Linux 上编译整套 C++ 依赖，耗时较长）；`docker`/`frontend` 已成功 |
@@ -120,7 +121,7 @@ git push -u origin main                # 成功
 
 ## 5. 未验证事项（发布前必须知情）
 
-1. **后端/前端镜像构建与"删容器重建后对象仍在"** —— 构建进行中，未完成即未验证。
+1. **前端镜像构建** —— 前端产物在宿主机已通过 `npm run build`，容器镜像未单独构建验证。
 2. **TSan**（数据竞争动态检测）与 **LeakSanitizer**（泄漏检测）—— MSVC 工具链不提供。
 3. **真实局域网链路性能** —— 所有测量在本机回环完成。
 4. **长稳/长时间压测**（数小时内存曲线）。
@@ -131,7 +132,7 @@ git push -u origin main                # 成功
 
 **没有阻塞发布的缺陷。** 建议在打 tag 前完成：
 
-1. 跑完后端镜像构建并补做"删容器重建"验证（或明确把该项排除在本版验收之外）；
+1. ~~跑完后端镜像构建并补做"删容器重建"验证~~（**已完成**：镜像构建成功，重建容器后 SHA-256 一致）；
 2. 确认 `backend`/`frontend` 两条 CI 工作流首次运行结论（失败则修）；
 3. 若要用 Docker 部署，先在目标环境实测一遍 `docker compose up -d --build`。
 

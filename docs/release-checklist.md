@@ -26,7 +26,7 @@
 - [ ] `docker compose config` 通过
 - [ ] 全新环境可启动：`docker compose up -d --build`
 - [ ] 重启 `postgres` / `redis` 容器后数据仍在
-- [ ] 删除并重建 `backend` 容器后对象文件仍在
+- [x] 删除并重建 `backend` 容器后对象文件仍在（2026-09-12 实测通过）
 - [ ] `.\scripts\migrate.ps1` 可重复执行（幂等）
 - [ ] `init-admin` 能创建管理员，且口令只从环境变量读
 - [ ] `.\scripts\backup.ps1` → `.\scripts\restore.ps1` 演练恢复成功且行数一致
@@ -67,14 +67,12 @@
 | Playwright 端到端 | ✅ 2/2 通过；截图 9 个用例通过，10 张图 |
 | 微基准 / HTTP 压测 | ✅ 见 `docs/performance.md` |
 | compose 校验 / 重启持久化 / 备份恢复演练 | ✅ 见 `docs/deployment.md`「阶段十五落地记录」 |
-| 后端镜像构建 | ⏳ 见下方"未完成项" |
+| 后端镜像构建 + 删容器重建验证 | ✅ `lan-file-hub-backend:local` 构建成功；重建容器后文件 SHA-256 一致 |
 | GitHub 仓库创建与推送 | ⏳ 需要用户确认（首次在该账号创建远程仓库） |
 
 **未完成项**：
 
-1. **后端/前端镜像的完整构建与"删容器重建"验证**：镜像需要在 Linux 容器内从源码编译整套 C++
-   依赖。本机容器 DNS 解析不了外网（`curl error 6`），已给 Dockerfile 加了可选代理构建参数
-   （`--build-arg HTTPS_PROXY=...`）绕过；构建流程本身已验证能走到编译阶段。**在该构建跑完之前，
-   "删除并重建 backend 容器后文件仍在"记为未验证。**
+1. **前端镜像构建**：前端产物在宿主机已通过 `npm run build`；容器镜像（nginx 托管 dist）未单独构建验证。
+   （后端镜像已构建成功并完成删容器重建验证：见上表。）
 2. **LICENSE**：类型未定（项目 `AGENTS.md` 待确认事项 #1），未创建许可证文件。
 3. **CI 实际执行**：工作流已写好并在本地逐条跑过等价命令，但 GitHub Actions 只有在推送后才能验证。

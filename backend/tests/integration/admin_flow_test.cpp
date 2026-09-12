@@ -28,15 +28,9 @@ namespace {
 constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
 
 bool DatabaseRequired() {
-  // 与其它集成测试一致：MSVC 下用 _dupenv_s，避免 getenv 的弃用告警（本项目 -Werror）
-  char* buffer = nullptr;
-  std::size_t size = 0;
-  if (_dupenv_s(&buffer, &size, "LAN_FILE_HUB_REQUIRE_DB") != 0 || buffer == nullptr) {
-    return false;
-  }
-  const std::string value(buffer);
-  std::free(buffer);
-  return value == "1";
+  // 跨平台：MSVC 下 getenv 会触发 C4996，统一走 GetEnvVar
+  const auto flag = GetEnvVar("LAN_FILE_HUB_REQUIRE_DB");
+  return flag.has_value() && *flag == "1";
 }
 
 class AdminFlowTest : public ::testing::Test {

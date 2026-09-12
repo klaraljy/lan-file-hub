@@ -450,7 +450,7 @@ cd frontend; npm test                  # 前端：Vitest，共 111 个用例
 - **Token 放在 sessionStorage**：生产部署前必须改为 HttpOnly Cookie，见上文「认证与 Token 策略」。
 - **下载限速默认关闭**：`DOWNLOAD_RATE_LIMIT=0` 表示不限速（局域网场景按带宽优先）。开启后按用户做字节级令牌桶限速，
   代价是该路径改为 chunked 传输、没有 `Content-Length`（Range 仍可用）；细节见 `docs/storage.md`「下载限速」。
-- **镜像构建耗时**：后端镜像要在 Linux 容器里从源码编译整套 C++ 依赖（Drogon/OpenSSL/libpqxx…），首次构建很久；
+- **镜像构建耗时**：后端镜像要在 Linux 容器里从源码编译整套 C++ 依赖（Drogon/OpenSSL/libpqxx…），首次构建很久（本机实测约 40 分钟）；
   `.dockerignore` 已排除本地 `build/`、`vcpkg_installed/` 与 `node_modules/`，避免把数 GB 上下文送进 daemon。
   `postgres` 与 `redis` 两个服务已验证可用（`Up (healthy)`，5432 / 6379 已映射）。
   开发时用 `docker compose up -d postgres redis` 起依赖，或用 `D:\Codex Tools\Redis\redis-server.exe`。

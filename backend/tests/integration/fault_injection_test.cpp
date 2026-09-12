@@ -18,14 +18,9 @@ namespace lan_file_hub {
 namespace {
 
 bool DatabaseRequired() {
-  char* buffer = nullptr;
-  std::size_t size = 0;
-  if (_dupenv_s(&buffer, &size, "LAN_FILE_HUB_REQUIRE_DB") != 0 || buffer == nullptr) {
-    return false;
-  }
-  const std::string value(buffer);
-  std::free(buffer);
-  return value == "1";
+  // 跨平台：MSVC 下 getenv 会触发 C4996，统一走 GetEnvVar
+  const auto flag = GetEnvVar("LAN_FILE_HUB_REQUIRE_DB");
+  return flag.has_value() && *flag == "1";
 }
 
 // 一个几乎不可能有服务监听的端口（避免与真实端口冲突）

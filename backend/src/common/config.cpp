@@ -200,6 +200,9 @@ std::string RedactSecrets(std::string text, const std::vector<std::string>& secr
   return text;
 }
 
+std::optional<std::string> GetEnvVar(const char* name) {
+  return GetEnv(name);
+}
 Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
   std::unordered_map<std::string, std::string> dotenv;
 

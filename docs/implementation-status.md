@@ -1544,7 +1544,7 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 | `docker compose config` | ✅ 通过（5 服务 + 依赖条件） |
 | 重启容器后数据仍在 | ✅ 实测：`docker compose restart postgres` 前后 `schema_migrations` 均 8 行 |
 | 备份/恢复演练 | ✅ 见 27.3 |
-| **删除并重建 backend 容器后文件仍在** | ⚠️ **未完成验证**：需要先构建后端镜像（在 Linux 容器内从源码编译整套 C++ 依赖）。构建过程中排掉三个环境问题：① 容器 DNS 解析不了外网 → 给 Dockerfile 加可选代理构建参数并经宿主代理构建；② `benchmark` 在 x64-linux 编译失败 → 改为可选 feature；③ `libpq` 需要 perl → builder 安装 `perl bison flex`。已在后台继续构建，**跑完之前这一条记为未验证** |
+| **删除并重建 backend 容器后文件仍在** | ✅ **已实测**：需要先构建后端镜像（在 Linux 容器内从源码编译整套 C++ 依赖）。构建过程中排掉三个环境问题：① 容器 DNS 解析不了外网 → 给 Dockerfile 加可选代理构建参数并经宿主代理构建；② `benchmark` 在 x64-linux 编译失败 → 改为可选 feature；③ `libpq` 需要 perl → builder 安装 `perl bison flex`。镜像构建成功（`Image lan-file-hub-backend:local Built`），容器以**非 root uid 10001** 运行、`/health/live` 与 `/health/ready` 均 200；实测流程：容器内注册用户并上传文件（记录 SHA-256）→ `docker rm -f lan-file-hub-backend` → `docker compose up -d backend`（新容器 ID）→ 用同一 Token 重新下载，**HTTP 200 且 SHA-256 逐字节一致**，文件仍在列表中（卷 `lan-file-hub_storage_data`） |
 | 前端镜像构建 | 未执行（同样依赖容器内网络；前端构建本身在宿主机已通过 `npm run build`） |
 
 ## 28. 阶段十六实施记录（2026-09-12）
@@ -1604,9 +1604,17 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 > 注：新仓库的**首次**推送不会触发工作流（GitHub 行为），用 `gh workflow run` 手动派发后三条都正常执行；
 > 之后每次推送都会自动触发。
 
-### 29.2 仍未验证（诚实清单）
+### 29.2 审查中修复的真实缺陷
 
-1. 后端/前端镜像构建完成的"删容器重建后对象仍在"验证（本机构建进行中）；
+| 缺陷 | 发现方式 | 处理 |
+|---|---|---|
+| `http_metrics.cpp` 重复解引用属性表（GCC `-Wnull-dereference`，`-Werror` 下构建失败） | **后端 Docker 镜像构建**（x64-linux/GCC）；MSVC 不报，本地三个预设都没暴露 | 取一次属性表指针并显式判空后复用；MSVC 与 GCC 双端构建通过，已提交推送并触发 CI 复验 |
+
+> 这条说明"在 Linux 上构建"本身就是一道有效的质量门：它能抓到 MSVC 放过的告警。
+
+### 29.3 仍未验证（诚实清单）
+
+1. 前端镜像构建（前端产物在宿主机已通过 `npm run build`，容器镜像未单独构建验证）；
 2. TSan 与 LeakSanitizer（MSVC 不提供）；
 3. 真实局域网链路性能与长稳压测；
 4. 生产 HTTPS 端到端（只有 nginx 示例与配置说明）。

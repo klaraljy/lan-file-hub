@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,10 @@
 
 namespace lan_file_hub {
 
+// 读取环境变量（跨平台：MSVC 用 _dupenv_s 规避 C4996，其余平台用 std::getenv）。
+// 不存在返回 std::nullopt。**业务代码不要直接用它**：配置统一走 AppConfig；
+// 只有配置加载、迁移工具与测试夹具需要读环境变量。
+[[nodiscard]] std::optional<std::string> GetEnvVar(const char* name);
 struct DatabaseConfig {
   std::string url;  // DATABASE_URL，postgresql:// 形式
   std::uint32_t connect_timeout_ms{3000};

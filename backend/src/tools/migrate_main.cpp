@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
   }
   const AppConfig& config = loaded.Value().config;
 
-  auto logging = InitializeLogging(LoggingOptions{"info", ""});
+  auto logging = InitializeLogging(LoggingOptions{"info", "", {}});
   if (!logging.Ok()) {
     std::cerr << "日志初始化失败: " << logging.GetError().message << std::endl;
     return 1;
@@ -160,14 +160,8 @@ int main(int argc, char** argv) {
 
     // ---- 初始化管理员（阶段十五第 10 条）----
     if (!options.admin_username.empty()) {
-      // 用 _dupenv_s（MSVC 下 getenv 会触发弃用告警，本项目 -Werror）
-      char* raw_password_buffer = nullptr;
-      std::size_t raw_password_size = 0;
-      const bool env_ok = _dupenv_s(&raw_password_buffer, &raw_password_size,
-                                    options.admin_password_env.c_str()) == 0 &&
-                          raw_password_buffer != nullptr;
-      const std::string password = env_ok ? std::string(raw_password_buffer) : std::string{};
-      std::free(raw_password_buffer);
+      // 跨平台读取（MSVC 用 _dupenv_s 规避 C4996，其它平台用 getenv）
+      const std::string password = GetEnvVar(options.admin_password_env.c_str()).value_or("");
       if (password.empty()) {
         std::cerr << "初始化管理员失败：环境变量 " << options.admin_password_env
                   << " 未设置或为空。仓库里不放默认口令，请显式提供（至少 " << kMinPasswordBytes
