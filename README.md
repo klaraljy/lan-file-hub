@@ -186,6 +186,28 @@ curl.exe http://127.0.0.1:8080/health/ready    # 依赖就绪：PostgreSQL / Red
 
 （端口以 `.env` 的 `HTTP_PORT` 为准，改了端口就把上面的 `8080` 一并替换。）
 
+### 8. 创建管理员（要用管理员功能时）
+
+注册页只能注册**普通用户**；第一个管理员必须显式创建（口令只从环境变量读，仓库里不放默认口令）：
+
+```powershell
+# 桌面按钮用户：双击 lan-file-hub.cmd → 按 5，按提示输入用户名 / 邮箱 / 口令（口令不回显）
+.\scripts\menu.ps1 -Action admin
+
+# 命令行
+$env:INITIAL_ADMIN_PASSWORD = '<至少 8 位>'
+.\scripts\create-admin.ps1 -Username admin -Email admin@example.com
+Remove-Item Env:\INITIAL_ADMIN_PASSWORD
+
+# 容器路径（生产）
+docker compose --profile admin run --rm init-admin
+```
+
+- 用户名不存在 → 新建 ADMIN 用户；已存在 → **提升为 ADMIN（不改口令）**；已是管理员 → 幂等跳过，
+  可以重复执行。
+- 登录后管理员功能在左侧「系统管理」（用户管理、系统指标、审计日志）。
+- 这是引导口令，登录后请立即修改。
+
 `/health/ready` 在任一必要依赖不可用时返回 **503**，并在 `components` 里逐项说明原因。
 
 浏览器打开 <http://localhost:5173> 即可注册并登录。
@@ -458,7 +480,8 @@ cd frontend; npm test                  # 前端：Vitest，共 111 个用例
 - **前端下载会把文件读进浏览器内存**：接口需要 `Authorization` 头，暂时只能用
   blob 方式下载。大文件流式下载与「改用 HttpOnly Cookie」一起在后续阶段处理。
 - **前端缺分页控件**：列表只显示第一页（总数会提示），拖拽移动与分页在阶段十。
-- **管理员接口未实现**：角色字段与令牌声明已就绪，管理员接口在阶段十三。
+- **管理员账号需要显式创建**：注册页只创建普通用户，第一个管理员用 `.\scripts\create-admin.ps1`
+  （或桌面菜单按 5）创建——用户名已存在时是**提升为 ADMIN**，不改口令。方式见「快速开始 8」。
 - **Token 放在 sessionStorage**：生产部署前必须改为 HttpOnly Cookie，见上文「认证与 Token 策略」。
 - **下载限速默认关闭**：`DOWNLOAD_RATE_LIMIT=0` 表示不限速（局域网场景按带宽优先）。开启后按用户做字节级令牌桶限速，
   代价是该路径改为 chunked 传输、没有 `Content-Length`（Range 仍可用）；细节见 `docs/storage.md`「下载限速」。

@@ -393,10 +393,14 @@ scrape_configs:
 ### 初始化管理员（第 10 条）
 
 ```powershell
+# 本机最简单：交互式，口令不回显（桌面菜单里就是「5 创建管理员」）
+.\scripts\create-admin.ps1
+.\scripts\create-admin.ps1 -Username admin -Email admin@example.com
+
 # 容器路径（口令从 .env 的 INITIAL_ADMIN_PASSWORD 读）
 docker compose --profile admin run --rm init-admin
 
-# 本地路径
+# 本地路径（等价的手工方式）
 $env:INITIAL_ADMIN_PASSWORD = '<至少 8 位>'
 .\scripts\migrate.ps1 -CreateAdmin alice -AdminEmail alice@example.com
 ```

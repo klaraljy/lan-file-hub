@@ -299,9 +299,9 @@ ninja / node / npm / git / docker   已在 PATH
 
 ### 本机一键启动（用户日常用）
 
-- **桌面只有一个按钮**：`lan-file-hub.cmd` 双击进小菜单（1 启动 / 2 停止 / 3 状态 / 4 打开浏览器 / Q 退出，
+- **桌面只有一个按钮**：`lan-file-hub.cmd` 双击进小菜单（1 启动 / 2 停止 / 3 状态 / 4 打开浏览器 / 5 创建管理员 / Q 退出，
   回车即启动）。菜单逻辑在 `scripts/menu.ps1`，实际动作是 `scripts/start.ps1` 与 `scripts/stop.ps1`。
-- 也可命令行直用：`.\scripts\menu.ps1 -Action start|stop|status|open`；
+- 也可命令行直用：`.\scripts\menu.ps1 -Action start|stop|status|open|admin`；
   `start.ps1 -Release / -NoBrowser / -NoFrontend`、`stop.ps1 -WithDeps`（连容器一起停）。
 - ⚠️ **不要把 `start.ps1` 的输出接进管道**（`.\scripts\start.ps1 | Select-Object ...`）：
   它启动的后台进程会一直持有那个管道句柄，外层会永远等下去（看起来像"卡死"）。
@@ -318,6 +318,10 @@ ninja / node / npm / git / docker   已在 PATH
   被占用或被系统保留时明确报错并以非零码退出，绝不进入事件循环——不会再出现"启动了但连不上"。
 - 脚本里的等待**一律有界且打进度点**：依赖 20 秒 / 后端 10 秒 / 前端 15 秒；失败立刻打印日志末尾
   并中止启动（不再静默重试 50 秒，也不在失败后还打印"启动完成"）。改脚本时不要重新引入长等待。
+- **管理员账号必须显式创建**：注册页只创建普通用户。菜单按 5，或
+  `.\scripts\create-admin.ps1 -Username admin -Email a@b.c`（口令交互输入、不回显，
+  至少 8 位；用户名已存在则**提升为 ADMIN 且不改口令**，已是管理员则幂等跳过）。
+  **口令只从环境变量传给工具，不进命令行、不落盘、不进日志**，仓库里不放默认口令。
 - 排查启动问题：后端日志 `%TEMP%\lfh-backend.log`，前端日志 `%TEMP%\lfh-frontend.log`。
 
 ### 仍未验证（不要写成已完成）
