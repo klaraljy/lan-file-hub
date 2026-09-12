@@ -203,6 +203,74 @@ ninja / node / npm / git / docker   已在 PATH
 - 因环境、依赖、网络或权限跑不起来时，报告必须写明：哪些没跑、为什么、风险是什么。
 - 不得把"命令已启动"说成"验证通过"；不得为了让测试通过而删除或跳过测试。
 
+## 11.1 Git、GitHub 与 CI（2026-09-12 首次发布时踩到的坑）
+
+仓库已发布：`https://github.com/klaraljy/lan-file-hub`（**私有**，默认分支 `main`）。
+本地目录名与仓库名一致，远程为 `origin`。
+
+### 推送
+
+- **直连 GitHub 经常被重置**（`Recv failure: Connection was reset`）。用户开着代理时走代理推送：
+
+  ```powershell
+  git -c http.proxy=http://127.0.0.1:65532 -c https.proxy=http://127.0.0.1:65532 push
+  ```
+
+- 推送前按全局规则检查：`git status` / `git diff` / `git remote -v` / `git branch --show-current`，
+  并确认没有 `.env`、转储、`storage/`、依赖树混进去。
+- **`.gitignore` 陷阱**：`/vcpkg_installed/` 有忽略，但阶段十四新增的 `/vcpkg_installed_asan/`
+  一开始**没有**，导致一次提交里混进 1875 个 Postgres 头文件。**新增任何依赖目录/构建目录后，
+  立刻补 `.gitignore` 与 `.dockerignore`**。同理 `/backups/`（含数据库转储与用户文件）必须忽略。
+
+### 工作流（`.github/workflows/`）
+
+| 工作流 | 内容 |
+|---|---|
+| `backend.yml` | `clang-format` 作业 + `build & test` 作业（Postgres/Redis 服务容器 + 跑迁移 + ctest，`LAN_FILE_HUB_REQUIRE_DB=1`） |
+| `frontend.yml` | `tsc --noEmit`、`npm run lint`、`npm test`、`npm run build` |
+| `docker.yml` | `docker compose config` + Dockerfile 语法检查 |
+
+### 必须记住的 5 个坑
+
+1. **新仓库首次推送不触发工作流**（GitHub 行为）。用 `gh workflow run <name> --ref main`
+   手动派发一次，之后就正常了。
+2. **clang-format 版本必须与开发机一致**。CI 装的是发行版自带的 18，本机是 19.1.0，
+   换行对齐与 CJK 宽度判定不同 → "本地通过、CI 失败"。工作流里已用
+   `pip install 'clang-format==19.1.0'` 固定版本。
+3. **不要在作业级 `env:` 里设 `DATABASE_URL` / `REDIS_URL` / `JWT_SECRET`**：
+   配置加载器**环境变量优先于 .env 文件**，而 `LoadConfigTest` 会写临时 `.env` 并断言文件里的值生效
+   → 三个配置用例会失败。CI 里数据库连接由「准备测试配置」步骤写出的 `.env` 提供。
+4. **Linux(GCC) 构建是独立的一道质量门**，`-Werror` 下会抓到 MSVC 不报的问题。
+   已经被抓到的三类（提交前最好本地跑一次 `docker compose build backend`）：
+   - `-Wnull-dereference`：`shared_ptr` 解引用写法（`req->attributes()->get<T>()`）→ 改成取一次局部指针或用请求头传值；
+   - `-Wmissing-field-initializers`：`LoggingOptions{"info", ""}` 少一个成员 → 补 `{}`；
+   - **MSVC 专有 API**：`_dupenv_s` 在 Linux 不存在 → 用 `GetEnvVar()`（`common/config.h`，内部用 `#if defined(_MSC_VER)` 分支）。
+5. **容器内可能解析不了外网域名**（`vcpkg` 报 `Couldn't resolve host name`）。
+   构建镜像时用宿主代理：
+
+   ```powershell
+   docker compose build --build-arg HTTPS_PROXY=http://host.docker.internal:65532 `
+                        --build-arg HTTP_PROXY=http://host.docker.internal:65532 backend
+   ```
+
+   后端镜像要在 Linux 容器里从源码编译整套依赖，**首次约 40 分钟**；`vcpkg` 的 clone 在
+   runner/本机都可能抖动失败，脚本与工作流里都有重试。
+
+### 本机一键启动（用户日常用）
+
+- `scripts/start.ps1`：起 Docker 依赖 → 跑迁移 → 起后端 → 起前端 dev server → 打开浏览器；
+  桌面上有「启动 lan-file-hub.cmd」双击即用，另有「停止 lan-file-hub.cmd」。
+- `scripts/start.ps1 -NoBrowser / -NoFrontend / -Release` 可选；`scripts/stop.ps1 -WithDeps` 连容器一起停。
+- ⚠️ **不要把 `start.ps1` 的输出接进管道**（`.\scripts\start.ps1 | Select-Object ...`）：
+  它启动的后台进程会一直持有那个管道句柄，外层会永远等下去（看起来像"卡死"）。
+  要看输出就重定向到文件（`*> out.txt`）或直接在控制台里跑。
+- 排查启动问题：后端日志 `%TEMP%\lfh-backend.log`，前端日志 `%TEMP%\lfh-frontend.log`。
+
+### 仍未验证（不要写成已完成）
+
+- ThreadSanitizer / UndefinedBehaviorSanitizer：MSVC 不提供，依赖又是 MSVC 静态库，无法混用 clang；
+- 前端镜像（nginx 托管 dist）未单独构建验证；
+- 真实局域网链路性能、长稳压测、生产 HTTPS 端到端（只有 nginx 示例）。
 ## 12. 提交
 
 - 提交信息用 `feat:` / `fix:` / `test:` / `docs:` / `refactor:` / `build:` / `chore:` 前缀加英文简述，
