@@ -230,7 +230,7 @@ ninja / node / npm / git / docker   已在 PATH
 | `frontend.yml` | `tsc --noEmit`、`npm run lint`、`npm test`、`npm run build` |
 | `docker.yml` | `docker compose config` + Dockerfile 语法检查 |
 
-### 必须记住的 5 个坑
+### 必须记住的 6 个坑
 
 1. **新仓库首次推送不触发工作流**（GitHub 行为）。用 `gh workflow run <name> --ref main`
    手动派发一次，之后就正常了。
@@ -259,6 +259,7 @@ ninja / node / npm / git / docker   已在 PATH
 6. **`ctest --test-dir <dir>` 会把测试的工作目录设成那个目录**，而集成测试夹具用相对路径读 `.env`
    → 所有打库的用例 12ms 内失败。已在 `backend/tests/CMakeLists.txt` 里给
    `gtest_discover_tests` 显式设置 `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`，无论怎么调 ctest 都对。
+
 ### 本机一键启动（用户日常用）
 
 - `scripts/start.ps1`：起 Docker 依赖 → 跑迁移 → 起后端 → 起前端 dev server → 打开浏览器；
