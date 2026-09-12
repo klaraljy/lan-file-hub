@@ -1,7 +1,9 @@
 name: backend
 
-# 注意：CMakePresets.json 里的 vcpkg toolchain 是 Windows 本机路径，
-# 所以 CI 里不用 presets，直接给 cmake 传参数（见下面的「配置」步骤）。
+# 后端：格式检查 + 编译 + 单元/集成测试。
+# 注意：CMakePresets.json 里的 vcpkg toolchain 是 Windows 本机路径，所以 CI 不走预设，
+# 改用显式 -D 参数。首次运行要编译 drogon 等依赖，之后走二进制缓存。
+
 on:
   push:
     branches: [main]
@@ -19,6 +21,11 @@ on:
       - 'vcpkg.json'
       - '.github/workflows/backend.yml'
   workflow_dispatch:
+
+# 全局环境：vcpkg 本体与二进制缓存（缓存步骤与 toolchain 都要用到）
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/vcpkg-cache,readwrite'
 
 jobs:
   format:
@@ -65,9 +72,9 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 10
     env:
-      # 集成测试的数据库/缓存配置（测试也会读 .env，见下面「准备测试配置」）
       DATABASE_URL: postgresql://lan_file_hub:lan_file_hub_ci@127.0.0.1:5432/lan_file_hub
       REDIS_URL: redis://127.0.0.1:6379/0
+      # 让"数据库不可用"从静默跳过变成失败
       LAN_FILE_HUB_REQUIRE_DB: '1'
     steps:
       - uses: actions/checkout@v4
