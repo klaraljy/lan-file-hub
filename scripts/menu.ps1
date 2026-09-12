@@ -44,22 +44,13 @@ function Show-Status {
 }
 
 function Invoke-Start {
-  # start.ps1 会启动后台进程，所以输出重定向到日志、并等它自己跑完
-  $log = Join-Path $env:TEMP 'lfh-start.log'
-  $proc = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $ProjectRoot -PassThru -WindowStyle Hidden `
-    -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'start.ps1') `
-    -RedirectStandardOutput $log -RedirectStandardError (Join-Path $env:TEMP 'lfh-start.err')
-  [void]$proc.WaitForExit(180000)
-  Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_.Trim() } | ForEach-Object { Write-Host ('  ' + $_) }
+  # 直接在当前进程里跑 start.ps1：输出直接进控制台（编码正确），
+  # 而且 start.ps1 自己就是把服务丢到后台后返回，不会挂住这里。
+  & (Join-Path $PSScriptRoot 'start.ps1')
 }
 
 function Invoke-Stop {
-  $log = Join-Path $env:TEMP 'lfh-stop.log'
-  $proc = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $ProjectRoot -PassThru -WindowStyle Hidden `
-    -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'stop.ps1') `
-    -RedirectStandardOutput $log -RedirectStandardError (Join-Path $env:TEMP 'lfh-stop.err')
-  [void]$proc.WaitForExit(60000)
-  Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_.Trim() } | ForEach-Object { Write-Host ('  ' + $_) }
+  & (Join-Path $PSScriptRoot 'stop.ps1')
 }
 
 function Invoke-Open { Start-Process $FrontendUrl | Out-Null; Write-Host ('  已在浏览器打开 ' + $FrontendUrl) -ForegroundColor Green }

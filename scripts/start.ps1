@@ -10,7 +10,9 @@
 param(
   [switch]$Release,
   [switch]$NoBrowser,
-  [switch]$NoFrontend
+  [switch]$NoFrontend,
+  # 默认不阻塞等待 Docker 引擎（冷启动可能 1–3 分钟）；需要脚本内等待就加上
+  [switch]$WaitForDocker
 )
 
 $ErrorActionPreference = 'Continue'
@@ -43,11 +45,47 @@ Write-Host ''
 
 # ---- 1) 依赖服务（PostgreSQL / Redis）----
 Step '检查依赖服务（Docker: postgres + redis）'
-$dockerOk = $false
-try { $null = docker version --format '{{.Server.Version}}' 2>$null; $dockerOk = ($LASTEXITCODE -eq 0) } catch { $dockerOk = $false }
-if (-not $dockerOk) {
-  Warn 'Docker 没在运行：请先启动 Docker Desktop，然后重新双击本脚本'
-  exit 1
+
+function Test-DockerEngine {
+  # 有界探测：docker 命令在引擎没起时可能卡住，所以放进带超时的后台任务
+  $job = Start-Job { docker version --format '{{.Server.Version}}' 2>$null }
+  $done = Wait-Job $job -Timeout 10
+  $ver = ''
+  if ($done) { $ver = (Receive-Job $job 2>$null | Out-String).Trim() }
+  Remove-Job $job -Force -ErrorAction SilentlyContinue
+  return ($done -and $ver -match '^\d')
+}
+
+if (-not (Test-DockerEngine)) {
+  Warn 'Docker 引擎没在运行，正在尝试启动 Docker Desktop…'
+  $desktopExe = @(
+    'D:\Codex Tools\Docker\Docker Desktop.exe',
+    "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+  ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($desktopExe) {
+    # 只负责拉起，不阻塞等待：Docker Desktop 冷启动可能要 1–3 分钟，
+    # 让脚本干等既浪费时间也看不出进度。
+    Start-Process $desktopExe | Out-Null
+    if ($WaitForDocker) {
+      Write-Host -NoNewline '    等待引擎就绪'
+      $ready = $false
+      for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 3
+        Write-Host -NoNewline '.'
+        if (Test-DockerEngine) { $ready = $true; break }
+      }
+      Write-Host ''
+      if (-not $ready) { Warn '等待超时：请稍后重试'; exit 1 }
+      Ok 'Docker 引擎已就绪'
+    } else {
+      Warn 'Docker Desktop 正在启动（首次通常 1–3 分钟）。'
+      Warn '等它的状态栏变绿后，回到菜单再按一次 1 即可（想让它自己等就加 -WaitForDocker）。'
+      exit 0
+    }
+  } else {
+    Warn '找不到 Docker Desktop.exe：请手动启动 Docker Desktop 后重试'
+    exit 1
+  }
 }
 docker compose up -d postgres redis 2>&1 | Out-Null
 for ($i = 0; $i -lt 30; $i++) {
