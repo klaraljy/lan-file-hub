@@ -256,6 +256,9 @@ ninja / node / npm / git / docker   已在 PATH
    后端镜像要在 Linux 容器里从源码编译整套依赖，**首次约 40 分钟**；`vcpkg` 的 clone 在
    runner/本机都可能抖动失败，脚本与工作流里都有重试。
 
+6. **`ctest --test-dir <dir>` 会把测试的工作目录设成那个目录**，而集成测试夹具用相对路径读 `.env`
+   → 所有打库的用例 12ms 内失败。已在 `backend/tests/CMakeLists.txt` 里给
+   `gtest_discover_tests` 显式设置 `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`，无论怎么调 ctest 都对。
 ### 本机一键启动（用户日常用）
 
 - `scripts/start.ps1`：起 Docker 依赖 → 跑迁移 → 起后端 → 起前端 dev server → 打开浏览器；

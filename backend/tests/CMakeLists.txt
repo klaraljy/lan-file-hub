@@ -58,11 +58,16 @@ target_link_libraries(lan_file_hub_integration_tests
 )
 
 include(GoogleTest)
+# WORKING_DIRECTORY 必须是项目根：集成测试夹具用相对路径读 .env（数据库/Redis/存储配置），
+# 而 `ctest --test-dir build/debug` 会把工作目录设成 build/debug，导致读不到 .env、
+# 所有打库的用例直接失败（CI 上真的踩到过）。
 gtest_discover_tests(lan_file_hub_unit_tests
   PROPERTIES LABELS "unit"
   DISCOVERY_TIMEOUT 30
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 gtest_discover_tests(lan_file_hub_integration_tests
   PROPERTIES LABELS "integration"
   DISCOVERY_TIMEOUT 30
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
