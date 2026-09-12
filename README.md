@@ -320,6 +320,8 @@ DELETE /api/v1/files/{id}                  软删除文件（进回收站）
 ```powershell
 .\scripts\build.ps1 -Preset debug      # 配置 + 构建
 .\scripts\test.ps1                     # ctest
+.\scripts\start.ps1                  # 一键启动：依赖 + 迁移 + 后端 + 前端 + 打开浏览器
+.\scripts\stop.ps1                   # 停止后端与前端（-WithDeps 连容器一起停）
 .\scripts\migrate.ps1                # 数据库迁移（-InContainer 走容器）
 .\scripts\backup.ps1                 # 备份数据库 + 对象存储到 backups\<时间戳>\
 .\scripts\restore.ps1 -BackupDir <目录>   # 恢复演练（默认恢复到临时库；-Force 才就地覆盖）

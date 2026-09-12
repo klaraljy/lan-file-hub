@@ -67,7 +67,7 @@
 | 22 | 前端状态处理 | ⚠️ 部分 | `PageState`（idle/loading/error/…）与上传任务状态机齐备并有单测；命名歧义见 M2 |
 | 23 | 刷新后可恢复上传 | ⚠️ 部分 | IndexedDB 持久化 + `UploadManager.restore` 4 个单测；缺浏览器级验证（M3） |
 | 24 | Docker Compose 可启动 | ✅ | `docker compose config` 通过；依赖与 `migrate` 服务退出码 0；backend 镜像构建成功，容器非 root（uid 10001）、`/health/live`+`/health/ready` 均 200；**删除并重建 backend 容器后文件 SHA-256 一致** |
-| 25 | CI 可运行 | ✅（已实测） | 三条工作流 `actionlint` 通过；仓库已推送，`docker` 与 `frontend` 工作流**运行成功**，`backend` 运行中（首推不触发是 GitHub 对新仓库首次推送的行为，手动 `workflow_dispatch` 验证通过） |
+| 25 | CI 可运行 | ✅ | 三条工作流在 GitHub Actions 上**全部通过**（`backend` 含 Postgres/Redis 服务容器 + 迁移 + 287 用例）。修掉 6 个 CI 专属问题：首推不触发、clang-format 版本、作业级环境变量覆盖临时 .env、Linux/GCC 三类编译告警、容器内 DNS、`ctest --test-dir` 工作目录——见 `AGENTS.md` §11.1 |
 | 26 | README 与代码一致 | ✅ | README 中 `scripts/*.ps1` 8 个全部存在、`npm run dev/build/test/lint` 均已定义、二进制路径与实际一致 |
 | 27 | API 文档与接口一致 | ✅（审查中修复） | 脚本对比 40 条路由：修复前缺 3 条，修复后 **40/40 覆盖** |
 | 28 | 测试覆盖正常与异常流程 | ✅ | 后端 287 个用例（含错误码断言：401/403/404/409/413/422/429/507）；前端 111 个；E2E 覆盖主流程与失效分享页 |
@@ -117,7 +117,7 @@ git push -u origin main                # 成功
 | 微基准 | SHA-256 2.17 GiB/s、落盘 1.66 GiB/s、顺序读 780 MiB/s |
 | HTTP 压测 | 上传 23.2 MiB/s、下载 238.9 MiB/s、P95 29.2 ms、失败率 0/200、内存不随文件增长 |
 | 故障注入 | 3/3（PG 不可用、Redis 不可用/恢复、存储根缺失） |
-| CI | `docker` ✅ 成功、`frontend` ✅ 成功、`backend` 运行中（真实 GitHub Actions） |
+| CI | 三条工作流全部 ✅（真实 GitHub Actions，`backend` 跑真库集成测试） |
 
 ## 5. 未验证事项（发布前必须知情）
 

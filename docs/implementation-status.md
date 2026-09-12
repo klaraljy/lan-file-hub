@@ -1599,7 +1599,7 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 | 本地仓库 | `main` 分支，306 个跟踪文件，3 条提交 |
 | 远程仓库 | `github.com/klaraljy/lan-file-hub`，**私有**，默认分支 `main`（`gh repo create --private`） |
 | 推送 | `git push -u origin main` 成功，`main` 已跟踪 `origin/main` |
-| CI（真实 GitHub Actions） | `docker` ✅ 成功、`frontend` ✅ 成功、`backend` 运行中（Linux 上编译整套 C++ 依赖） |
+| CI（真实 GitHub Actions） | ✅ 三条工作流全部通过：`docker`、`frontend`、`backend`（后者在 CI 里跑**真实 Postgres/Redis 服务容器 + 迁移 + 287 个用例**） |
 
 > 注：新仓库的**首次**推送不会触发工作流（GitHub 行为），用 `gh workflow run` 手动派发后三条都正常执行；
 > 之后每次推送都会自动触发。
