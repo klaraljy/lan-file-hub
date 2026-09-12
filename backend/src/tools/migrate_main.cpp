@@ -163,10 +163,9 @@ int main(int argc, char** argv) {
       // 用 _dupenv_s（MSVC 下 getenv 会触发弃用告警，本项目 -Werror）
       char* raw_password_buffer = nullptr;
       std::size_t raw_password_size = 0;
-      const bool env_ok =
-          _dupenv_s(&raw_password_buffer, &raw_password_size,
-                    options.admin_password_env.c_str()) == 0 &&
-          raw_password_buffer != nullptr;
+      const bool env_ok = _dupenv_s(&raw_password_buffer, &raw_password_size,
+                                    options.admin_password_env.c_str()) == 0 &&
+                          raw_password_buffer != nullptr;
       const std::string password = env_ok ? std::string(raw_password_buffer) : std::string{};
       std::free(raw_password_buffer);
       if (password.empty()) {
