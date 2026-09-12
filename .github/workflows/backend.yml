@@ -86,7 +86,16 @@ jobs:
 
       - name: 安装 vcpkg
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          # runner 网络抖动会让 clone 失败（exit 128）：重试几次再放弃
+          for attempt in 1 2 3; do
+            if git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"; then
+              break
+            fi
+            echo "vcpkg clone 第 $attempt 次失败，重试…"
+            rm -rf "$VCPKG_ROOT"
+            sleep 10
+          done
+          test -d "$VCPKG_ROOT/.git" || { echo "vcpkg 克隆失败"; exit 1; }
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 
       - name: 配置
