@@ -230,6 +230,10 @@ ninja / node / npm / git / docker   已在 PATH
 | `frontend.yml` | `tsc --noEmit`、`npm run lint`、`npm test`、`npm run build` |
 | `docker.yml` | `docker compose config` + Dockerfile 语法检查 |
 
+> **CI 现在不作为阻塞项**（用户 2026-09-12 确认）：推送后不必等结果、不必为 CI 失败立刻回头改，
+> 也不要把 CI 状态写成待办；留到产品改良完善后统一处理。
+> 详见全局 `AGENTS.md` §13.1。下面这些坑是**以后**再动 CI 时用的。
+
 ### 必须记住的 8 个坑
 
 1. **新仓库首次推送不触发工作流**（GitHub 行为）。用 `gh workflow run <name> --ref main`
