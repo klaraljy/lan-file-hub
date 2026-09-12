@@ -57,6 +57,25 @@ CORS_ALLOWED_ORIGINS
 
 任何一项缺失或非法，服务必须启动失败并输出明确原因，不得回退到默认值继续运行。
 
+**端口不可用同样属于启动失败**：服务在装配 HTTP 服务之前先自检 `HTTP_PORT`
+（`common/net.h` 的 `CheckListenPort` → `PortStatus`，见 `backend/src/main.cpp` 第 3 步），
+不可用时打印明确原因并以非零码退出。这样做的原因：Drogon 绑定失败时只打一行 `FATAL` 日志，
+进程仍留在事件循环里不退出——外部看到的是「进程活着、端口没人听」，容器编排会误判成启动成功，
+本机一键启动脚本也会被误导（阶段十六发布后实测踩到过）。
+
+自检区分两种原因，因为处理方式完全不同：
+
+| `PortStatus` | 含义 | 处理 |
+|---|---|---|
+| `kInUse` | 端口已被占用（`EADDRINUSE`/`WSAEADDRINUSE`） | 停掉已有实例，或改 `HTTP_PORT` |
+| `kForbidden` | 端口被系统保留或权限不足（`EACCES`/`WSAEACCES`） | 换端口；Windows 上用 `netsh int ipv4 show excludedportrange protocol=tcp` 查看保留段 |
+
+`kForbidden` 不是理论情况：Windows 上 Docker Desktop / Hyper-V / WSL 会预留端口段
+（本机实测预留 `7920-8019`、`8020-8119`、`8120-8219`、`8320-8419`，**默认的 8080 正好落在里面**），
+此时没有任何进程在监听，`bind` 却直接失败——只提示"端口被占用"会把排查方向带偏。
+端口是**单点配置**：改 `.env` 的 `HTTP_PORT` 即可，`scripts/*.ps1` 与 `frontend/vite.config.ts`
+都会跟着走（本机改用 `9080`）。
+
 ---
 
 ## 密钥与凭据

@@ -230,7 +230,7 @@ ninja / node / npm / git / docker   已在 PATH
 | `frontend.yml` | `tsc --noEmit`、`npm run lint`、`npm test`、`npm run build` |
 | `docker.yml` | `docker compose config` + Dockerfile 语法检查 |
 
-### 必须记住的 6 个坑
+### 必须记住的 8 个坑
 
 1. **新仓库首次推送不触发工作流**（GitHub 行为）。用 `gh workflow run <name> --ref main`
    手动派发一次，之后就正常了。
@@ -260,6 +260,39 @@ ninja / node / npm / git / docker   已在 PATH
    → 所有打库的用例 12ms 内失败。已在 `backend/tests/CMakeLists.txt` 里给
    `gtest_discover_tests` 显式设置 `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`，无论怎么调 ctest 都对。
 
+7. **`write` / `edit` 工具写出来的是无 BOM 的 UTF-8**，而 `scripts/*.ps1` 里有中文：
+   PowerShell 5.1 对无 BOM 文件按 ANSI(GBK) 解析 → 中文乱码，甚至报一堆假语法错误。
+   改完脚本必须补回 BOM 并复核：
+
+   ```powershell
+   $p = 'E:\DeepSeekProjects\lan-file-hub\scripts\start.ps1'
+   $t = [System.IO.File]::ReadAllText($p, (New-Object System.Text.UTF8Encoding($false)))
+   [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($true)))
+   $b = [System.IO.File]::ReadAllBytes($p)   # 必须是 EF BB BF
+   ```
+
+   语法自检（无 BOM 会误报）：
+
+   ```powershell
+   $e = $null; [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$e); @($e).Count
+   ```
+
+8. **Windows 保留端口段会让 8080 根本绑不上**（Docker Desktop / Hyper-V / WSL 启动时预留；
+   本机实测预留了 `7920-8019`、`8020-8119`、`8120-8219`、`8320-8419`——**8080/8081/8180 全在里面**）。
+   症状极具迷惑性：`bind` 返回 `WSAEACCES`（"access permissions"）、**没有任何进程在监听**，
+   而 Drogon 只会打一行 `Bind address failed`。查看保留段：
+
+   ```powershell
+   netsh int ipv4 show excludedportrange protocol=tcp
+   ```
+
+   处理：把 `.env` 的 `HTTP_PORT` 改成保留段外的端口（**本机用 9080**）。
+   `scripts/*.ps1` 与 `frontend/vite.config.ts` 都跟着 `.env` 走（`scripts/_env.ps1` 统一读取），
+   不需要改代码；前端代理由 `start.ps1` 注入 `LFH_BACKEND_URL`，所以前端也不用配。
+   也可以在管理员 PowerShell 里释放保留段，但那是系统级改动，先确认再动。
+   后端已经能区分**「被占用」与「被系统保留」**（`common/net.h` 的 `PortStatus`），
+   报错信息里直接给出上面的排查命令。
+
 ### 本机一键启动（用户日常用）
 
 - **桌面只有一个按钮**：`lan-file-hub.cmd` 双击进小菜单（1 启动 / 2 停止 / 3 状态 / 4 打开浏览器 / Q 退出，
@@ -271,6 +304,16 @@ ninja / node / npm / git / docker   已在 PATH
   要看输出就重定向到文件（`*> out.txt`）或直接在控制台里跑。
 - `menu.ps1` 在**非交互式**调用（stdin 被重定向）时会直接打印状态后退出，不进 `Read-Host` 菜单——
   否则它会一直等输入，看起来像卡死（自动化测试踩到过）。
+- 后端"在不在跑"**只看 `/health/live`，不看进程名**：Drogon 绑定端口失败时只打一行 `FATAL`
+  日志、进程还可能继续留在事件循环里（僵尸：进程活着、端口没人听）。只看进程名会误判成
+  "已在运行"从而永远不再启动；`start.ps1` 现在按健康探活判断，并清掉占着 8080 却不健康的旧进程。
+- 后端端口**只有一处配置**：`.env` 的 `HTTP_PORT`（本机是 `9080`，因为 8080 落在 Windows
+  保留段里）。`scripts/_env.ps1` 负责读取，`menu.ps1` / `start.ps1` / `bench.ps1` 共用；
+  前端代理地址由 `start.ps1` 用 `LFH_BACKEND_URL` 注入 vite。**不要在脚本里硬编码端口。**
+- 后端启动前自检监听端口（`common/net.h` 的 `CheckListenPort` → `PortStatus`）：
+  被占用或被系统保留时明确报错并以非零码退出，绝不进入事件循环——不会再出现"启动了但连不上"。
+- 脚本里的等待**一律有界且打进度点**：依赖 20 秒 / 后端 10 秒 / 前端 15 秒；失败立刻打印日志末尾
+  并中止启动（不再静默重试 50 秒，也不在失败后还打印"启动完成"）。改脚本时不要重新引入长等待。
 - 排查启动问题：后端日志 `%TEMP%\lfh-backend.log`，前端日志 `%TEMP%\lfh-frontend.log`。
 
 ### 仍未验证（不要写成已完成）
@@ -278,6 +321,7 @@ ninja / node / npm / git / docker   已在 PATH
 - ThreadSanitizer / UndefinedBehaviorSanitizer：MSVC 不提供，依赖又是 MSVC 静态库，无法混用 clang；
 - 前端镜像（nginx 托管 dist）未单独构建验证；
 - 真实局域网链路性能、长稳压测、生产 HTTPS 端到端（只有 nginx 示例）。
+
 ## 12. 提交
 
 - 提交信息用 `feat:` / `fix:` / `test:` / `docs:` / `refactor:` / `build:` / `chore:` 前缀加英文简述，

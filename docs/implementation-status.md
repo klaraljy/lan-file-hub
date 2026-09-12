@@ -1618,3 +1618,66 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 2. TSan 与 LeakSanitizer（MSVC 不提供）；
 3. 真实局域网链路性能与长稳压测；
 4. 生产 HTTPS 端到端（只有 nginx 示例与配置说明）。
+
+---
+
+## 30. 发布后修复：一键启动"卡死"的真实原因（2026-09-12）
+
+用户双击桌面按钮后，输出停在 `==> 启动后端` 长时间没有下文。下面是从现场证据到复验的完整记录。
+
+### 30.1 现场证据
+
+| 观察 | 结果 |
+|---|---|
+| `netstat` 8080 | **没有任何进程在监听** |
+| `Get-Process lan_file_hub_server` | 有一个进程（pid 10588），`MainWindowTitle` 指向 debug 版 exe |
+| `%TEMP%\lfh-backend.log` 末尾 | `进入事件循环（Ctrl+C 退出）` 紧跟 `FATAL , Bind address failed at 0.0.0.0:8080 - Socket.cc:67` |
+| `taskkill /PID 10588 /F` | `There is no running instance of the task`，但进程对象仍在、exe 仍被占用 |
+| 该进程的顶层窗口 | 标题就是 exe 路径；发一个 `WM_CLOSE` 之后进程立刻消失、exe 随即解锁 |
+| `Socket.Bind('0.0.0.0', 8080)` | 失败：`access permissions`（= **WSAEACCES**，**不是** `EADDRINUSE`） |
+| `netsh int ipv4 show excludedportrange protocol=tcp` | 保留段 `7920-8019`、`8020-8119`、`8120-8219`、`8320-8419`——**8080 正好落在里面** |
+
+### 30.2 根因（三件事叠加）
+
+1. **端口根本不可绑定**：启动 Docker Desktop 后，Hyper-V/WSL 预留的端口段覆盖了 8080。
+   这解释了"下午还能用、启动 Docker 之后就不行"。
+2. **失败方式极具迷惑性**：Drogon 绑定失败只打一行 `FATAL`，随后进程卡在一个**断言/崩溃对话框**上
+   （`start.ps1` 用 `-WindowStyle Minimized` 启动，对话框被藏起来、永远没人点）→
+   进程既不监听也不退出，还锁住 exe，导致之后 `cmake --build` 报
+   `LNK1168: 无法打开 bin\lan_file_hub_server.exe 进行写入`。
+3. **启动脚本的判断与等待都不对**：按**进程名**判断"后端已在运行"（遇到上面的僵尸就永远跳过启动）；
+   健康等待是 20 次**静默**重试（最多约 50 秒零输出，看起来就是卡死）；等待结束后无论成败都打印
+   `后端: http://...`，最后还打印 `✅ 启动完成`；成功路径也不显式 `exit 0`，
+   调用方读到的 `$LASTEXITCODE` 是上一条原生命令的退出码（菜单会把成功误判成失败）。
+
+### 30.3 修复
+
+| 位置 | 改动 |
+|---|---|
+| `backend/include/lan_file_hub/common/net.h`、`backend/src/common/net.cpp`（新增） | `CheckListenPort()` → `PortStatus{kAvailable,kInUse,kForbidden,kUnknown}`：先探 `0.0.0.0` 再探 `127.0.0.1`（Windows 允许在别人已绑具体地址时**仍然**绑通通配地址，只探一次会漏判）；按错误码区分"被占用"与"被系统保留"；不设 `SO_REUSEADDR`（Windows 上它会抢占他人端口，检查将完全失效） |
+| `backend/src/main.cpp` | 新增第 3 步"监听端口自检"，按 `kInUse`/`kForbidden` 给不同提示并 `return Fail(...)`（非零退出）；启动时 `SetErrorMode(SEM_NOGPFAULTERRORBOX …)` + `_set_abort_behavior(0, …)`——**服务进程绝不弹交互式崩溃对话框**（正是它把进程变成杀不掉、锁住 exe 的僵尸） |
+| `backend/tests/unit/net_test.cpp`（新增） | 6 个用例：通配监听→不可用、环回监听→不可用、刚释放→可用、端口 0→可用、占用时状态为 `kInUse`、空闲时状态为 `kAvailable` |
+| `scripts/start.ps1` | ① 按 `/health/live` 判断后端是否在跑，**不看进程名**；② 启动前清掉占用端口却不健康的旧进程（已退出的僵尸跳过，不误报）；③ 等待**有界 + 进度点**（依赖 20s / 后端 10s / 前端 15s）；④ 起不来就打印日志末尾、识别原因并 `exit 1`，不再打印"启动完成"；⑤ 结尾显式 `exit 0` |
+| `scripts/_env.ps1`（新增）、`menu.ps1`、`start.ps1`、`bench.ps1` | 后端端口统一从 `.env` 的 `HTTP_PORT` 读取，脚本不再硬编码 8080 |
+| `frontend/vite.config.ts`、`tests/e2e/screenshots.spec.ts` | 后端地址改为 `LFH_BACKEND_URL`（默认 8080），由 `start.ps1` 按 `.env` 注入 |
+| `.env`（本机，不入库） | `HTTP_PORT=9080`：8080 落在 Windows 保留段内，本机改用保留段外的端口 |
+| `scripts/menu.ps1` | `start.ps1` 非零退出时补一句"启动未完成：原因见上面的输出" |
+
+### 30.4 复验结果（全部为本机实测）
+
+| 检查 | 结果 |
+|---|---|
+| `.\scripts\build.ps1 -Preset debug` | 通过（`-Werror`） |
+| `.\scripts\test.ps1 -Preset debug`（`LAN_FILE_HUB_REQUIRE_DB=1`） | **293/293 通过**（unit 160 / integration 133，104.8 秒） |
+| `.\scripts\format.ps1 -Check` | 通过（151 个文件） |
+| 前端 `tsc --noEmit` / `npm run lint` / `npm test` / `npm run build` | 全部通过；vitest **111/111**（7.6 秒） |
+| 用保留段内的 8080 直接起后端 | 退出码 **1**、**0.3 秒**退出、提示"端口 8080 被系统保留或禁止绑定…用 netsh … 查看保留段"、不留存活进程 |
+| 端口被占用时起后端（改动前的同一路径） | 退出码 1、**0.2 秒**退出并给出原因；该分支现由单元测试覆盖 |
+| 数据库连不上时 `start.ps1` | 退出码 **1**、**10.4 秒**、打印后端日志末尾与真实原因（`Connection refused`）、明确中止 |
+| 正常一键启动 `start.ps1 -NoBrowser` | 退出码 **0**、**8.1 秒**；`/health/live`、`/health/ready` 均 **200** |
+| 经前端代理 | `http://127.0.0.1:5173/health/live` → **200**；`/api/v1/auth/me` → **401**（认证中间件生效） |
+| 菜单状态 | `后端(9080): 运行中  前端(5173): 运行中  依赖(5432/6379): 可用  后端就绪检查: 200` |
+
+> 教训（已写进 `AGENTS.md` §11.1）：脚本判断服务状态只能用**探活**，不能用**进程名**；
+> 一切"等一会儿看看"的循环必须**有界且有输出**；服务进程必须禁止弹出任何交互式对话框；
+> `write`/`edit` 工具写出的 `.ps1` 是无 BOM UTF-8，改完必须补 BOM（否则中文乱码甚至假语法错误）。

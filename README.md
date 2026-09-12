@@ -166,8 +166,16 @@ npm install          # 首次
 npm run dev          # http://localhost:5173
 ```
 
-Vite 开发服务器会把 `/api` 与 `/health` 代理到 `http://127.0.0.1:8080`，
-所以前后端可以分别启动，不需要额外配置跨域。
+Vite 开发服务器会把 `/api` 与 `/health` 代理到后端（默认 `http://127.0.0.1:8080`），
+所以前后端可以分别启动，不需要额外配置跨域。后端端口以 `.env` 的 `HTTP_PORT` 为准：
+`scripts/start.ps1` 会把它通过 `LFH_BACKEND_URL` 注入 vite；手动 `npm run dev` 时也可以自己设
+`$env:LFH_BACKEND_URL = 'http://127.0.0.1:9080'`。
+
+> ⚠️ **Windows 上 8080 有可能绑不上**：Docker Desktop / Hyper-V / WSL 会预留端口段，
+> 8080 常常落在里面（用 `netsh int ipv4 show excludedportrange protocol=tcp` 查看）。
+> 这种情况**没有任何进程在监听**，但绑定会失败。后端启动时会自检端口并明确报出原因
+> （区分「被占用」与「被系统保留」）后退出，不会带病启动；把 `.env` 的 `HTTP_PORT`
+> 换成保留段外的端口即可，脚本与前端代理都会跟着走。
 
 ### 7. 验证
 
@@ -175,6 +183,8 @@ Vite 开发服务器会把 `/api` 与 `/health` 代理到 `http://127.0.0.1:8080
 curl.exe http://127.0.0.1:8080/health/live     # 进程存活，永远不依赖外部组件
 curl.exe http://127.0.0.1:8080/health/ready    # 依赖就绪：PostgreSQL / Redis / 对象存储
 ```
+
+（端口以 `.env` 的 `HTTP_PORT` 为准，改了端口就把上面的 `8080` 一并替换。）
 
 `/health/ready` 在任一必要依赖不可用时返回 **503**，并在 `components` 里逐项说明原因。
 
