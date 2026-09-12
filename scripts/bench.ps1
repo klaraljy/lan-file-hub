@@ -4,11 +4,12 @@
 #   .\scripts\bench.ps1 -FileMiB 16 -ApiRequests 100 -Concurrency 4
 #   .\scripts\bench.ps1 -WriteJson D:\tmp\bench.json
 #
-# 前置：后端已在运行（默认 http://127.0.0.1:8080），PostgreSQL 与 Redis 可用。
+# 前置：后端已在运行（默认取 .env 的 HTTP_PORT，即 http://127.0.0.1:<HTTP_PORT>），
+# PostgreSQL 与 Redis 可用。
 # 脚本只创建一个临时测试用户与它自己的文件，不改服务端配置，也不清理已有数据。
 # **任何一项失败都会以非零退出码结束**（任务书要求）。
 param(
-  [string]$BaseUrl = 'http://127.0.0.1:8080',
+  [string]$BaseUrl = '',
   [int]$FileMiB = 64,
   [int]$ApiRequests = 200,
   [int]$Concurrency = 8,
@@ -16,6 +17,10 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+if (-not $BaseUrl) {
+  . (Join-Path $PSScriptRoot '_env.ps1')
+  $BaseUrl = Get-BackendUrl
+}
 $ProgressPreference = 'SilentlyContinue'
 $script:Failures = New-Object System.Collections.ArrayList
 $script:Results = [ordered]@{}

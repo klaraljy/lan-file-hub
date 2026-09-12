@@ -8,7 +8,10 @@ param(
 
 $ErrorActionPreference = 'Continue'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$BackendUrl = 'http://127.0.0.1:8080'
+# 端口以 .env 的 HTTP_PORT 为准（见 scripts/_env.ps1）
+. (Join-Path $PSScriptRoot '_env.ps1')
+$BackendPort = Get-BackendPort
+$BackendUrl = Get-BackendUrl
 $FrontendUrl = 'http://127.0.0.1:5173'
 
 function Test-Port([int]$Port, [int]$TimeoutMs = 500) {
@@ -22,10 +25,10 @@ function Test-Port([int]$Port, [int]$TimeoutMs = 500) {
 
 function Get-StatusLines {
   $lines = @()
-  $backendUp = Test-Port 8080
+  $backendUp = Test-Port $BackendPort
   $frontendUp = Test-Port 5173
   $depsUp = (Test-Port 5432) -and (Test-Port 6379)
-  $lines += ('后端(8080):   ' + $(if ($backendUp) { '运行中' } else { '未运行' }))
+  $lines += ('后端(' + $BackendPort + '):   ' + $(if ($backendUp) { '运行中' } else { '未运行' }))
   $lines += ('前端(5173):   ' + $(if ($frontendUp) { '运行中' } else { '未运行' }))
   $lines += ('依赖(5432/6379): ' + $(if ($depsUp) { '可用' } else { '不可用（需要 Docker Desktop）' }))
   if ($backendUp) {
@@ -47,6 +50,7 @@ function Invoke-Start {
   # 直接在当前进程里跑 start.ps1：输出直接进控制台（编码正确），
   # 而且 start.ps1 自己就是把服务丢到后台后返回，不会挂住这里。
   & (Join-Path $PSScriptRoot 'start.ps1')
+  if ($LASTEXITCODE -ne 0) { Write-Host '  启动未完成：原因见上面的输出' -ForegroundColor Yellow }
 }
 
 function Invoke-Stop {

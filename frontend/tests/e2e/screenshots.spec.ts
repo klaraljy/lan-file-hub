@@ -105,7 +105,9 @@ test('公开分享页（无需登录）', async ({ page }) => {
 });
 
 test('指标端点（文本）', async ({ page }) => {
-  await page.goto('http://127.0.0.1:8080/metrics');
+  // 后端地址可覆盖：本机 8080 可能落在 Windows 保留端口段里，改 .env 的 HTTP_PORT 即可
+  const backendUrl = process.env.LFH_BACKEND_URL ?? 'http://127.0.0.1:8080';
+  await page.goto(`${backendUrl}/metrics`);
   await expect(page.locator('body')).toContainText('lan_file_hub_http_requests_total');
   await shot(page, '10-metrics');
 });
