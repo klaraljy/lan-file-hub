@@ -1,9 +1,9 @@
 ﻿# 一键菜单（阶段十六产物）：桌面「lan-file-hub.cmd」双击后进这里。
 #
-#   .\scripts\menu.ps1            # 交互菜单：1 启动 / 2 停止 / 3 状态 / 4 打开浏览器
-#   .\scripts\menu.ps1 -Action start|stop|status|open    # 直接执行某一项（脚本化调用）
+#   .\scripts\menu.ps1            # 交互菜单：1 启动 / 2 停止 / 3 状态 / 4 打开浏览器 / 5 创建管理员
+#   .\scripts\menu.ps1 -Action start|stop|status|open|admin    # 直接执行某一项（脚本化调用）
 param(
-  [ValidateSet('', 'start', 'stop', 'status', 'open')][string]$Action = ''
+  [ValidateSet('', 'start', 'stop', 'status', 'open', 'admin')][string]$Action = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -59,12 +59,19 @@ function Invoke-Stop {
 
 function Invoke-Open { Start-Process $FrontendUrl | Out-Null; Write-Host ('  已在浏览器打开 ' + $FrontendUrl) -ForegroundColor Green }
 
+# 创建/提升管理员：口令由 create-admin.ps1 交互输入（不回显、不进命令行、不进日志）
+function Invoke-Admin {
+  & (Join-Path $PSScriptRoot 'create-admin.ps1')
+  if ($LASTEXITCODE -ne 0) { Write-Host '  创建管理员未完成：原因见上面的输出' -ForegroundColor Yellow }
+}
+
 function Invoke-Once([string]$What) {
   switch ($What) {
     'start' { Invoke-Start }
     'stop' { Invoke-Stop }
     'status' { Show-Status }
     'open' { Invoke-Open }
+    'admin' { Invoke-Admin }
   }
 }
 
@@ -74,7 +81,7 @@ if ($Action) { Invoke-Once $Action; exit 0 }
 # 非交互式调用（stdin 被重定向、由脚本驱动）时不要进菜单：
 # Read-Host 在这种情况下会一直等输入，表现为"卡死"（自动化测试踩到过）。
 if ([Console]::IsInputRedirected) {
-  Write-Host '  检测到非交互式调用：请用 -Action start|stop|status|open' -ForegroundColor Yellow
+  Write-Host '  检测到非交互式调用：请用 -Action start|stop|status|open|admin' -ForegroundColor Yellow
   Show-Status
   exit 0
 }
@@ -88,6 +95,7 @@ while ($true) {
   Write-Host '    [2] 停止（停后端与前端，数据保留）'
   Write-Host '    [3] 查看状态'
   Write-Host '    [4] 打开浏览器'
+  Write-Host '    [5] 创建管理员（首次用管理员功能；已有用户可提升为管理员）'
   Write-Host '    [Q] 退出'
   Write-Host ''
   $choice = (Read-Host '  请选择').Trim().ToLower()
@@ -96,8 +104,9 @@ while ($true) {
     '2' { Invoke-Stop }
     '3' { Show-Status }
     '4' { Invoke-Open }
+    '5' { Invoke-Admin }
     'q' { Write-Host '  再见' -ForegroundColor DarkGray; exit 0 }
     '' { Invoke-Start }   # 直接回车 = 启动（最常用）
-    default { Write-Host '  请输入 1 / 2 / 3 / 4 / Q' -ForegroundColor Yellow }
+    default { Write-Host '  请输入 1 / 2 / 3 / 4 / 5 / Q' -ForegroundColor Yellow }
   }
 }
