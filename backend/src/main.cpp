@@ -1,6 +1,12 @@
 // 服务入口。
 // 启动顺序：配置 → 日志 → 存储目录 → 数据库连接池 → 服务装配 → HTTP 服务。
 // 任何一步失败都必须明确报错并非零退出，绝不带病启动（docs/deployment.md）。
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -18,6 +24,7 @@
 #include "lan_file_hub/application/app_context.h"
 #include "lan_file_hub/common/config.h"
 #include "lan_file_hub/common/logging.h"
+#include "lan_file_hub/common/net.h"
 #include "lan_file_hub/domain/upload_session.h"
 #include "lan_file_hub/infrastructure/health_check.h"
 #include "lan_file_hub/storage/local_object_storage.h"
@@ -38,6 +45,16 @@ std::string Redact(const std::string& text, const std::vector<std::string>& secr
 
 int main(int /*argc*/, char** /*argv*/) {
   using namespace lan_file_hub;
+
+#if defined(_WIN32)
+  // 服务进程一律不能弹崩溃/断言对话框：没人点击时进程会永远挂在那里——既不监听端口、
+  // 也不退出，还锁住 exe 让重新构建失败（实测：端口被占导致 Drogon 断言，留下这种僵尸进程）。
+  ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
+#if defined(_MSC_VER)
+  // abort 时不要写错误消息、不要走 Windows 错误报告，直接终止
+  ::_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
 
   // 1) 配置：.env（工作目录）+ 进程环境变量，环境变量优先
   auto loaded = LoadConfig(".env");
@@ -60,7 +77,28 @@ int main(int /*argc*/, char** /*argv*/) {
   spdlog::info("lan-file-hub 启动中 | env={} | 监听端口={} | 线程数={}", config.app_env,
                config.http_port, config.http_threads);
 
-  // 3) 存储根目录
+  // 3) 监听端口自检（最便宜的失败先报）
+  // Drogon 绑定失败时只打一行 FATAL 日志，进程仍留在事件循环里不退出——外部看到的是
+  // 「进程活着、端口没人听」，容器编排会以为服务已起，一键启动脚本也会被误导。
+  // 所以这里自己先探一次，不可用就明确报错并非零退出，绝不带病启动。
+  const PortStatus port_status = CheckListenPort(static_cast<std::uint16_t>(config.http_port));
+  if (port_status != PortStatus::kAvailable && port_status != PortStatus::kUnknown) {
+    std::string message = "端口 " + std::to_string(config.http_port);
+    if (port_status == PortStatus::kForbidden) {
+      // 本机真的出现过：Docker Desktop 预留的端口段（7920-8419）覆盖了 8080，
+      // 没有任何进程在监听，bind 却报 WSAEACCES。只提示"被占用"会把排查方向带偏。
+      message +=
+          " 被系统保留或禁止绑定（Windows 保留端口段，或权限不足）。"
+          "用 netsh int ipv4 show excludedportrange protocol=tcp 查看保留段，"
+          "再换一个端口（.env 的 HTTP_PORT）或释放该保留段";
+    } else {
+      message += " 已被占用：可能已有一个实例在运行。先停掉它（或改 .env 的 HTTP_PORT）";
+    }
+    spdlog::error("{}", message);
+    return Fail(message);
+  }
+
+  // 4) 存储根目录
   std::error_code ec;
   std::filesystem::create_directories(config.storage.root, ec);
   if (ec) {
@@ -69,7 +107,7 @@ int main(int /*argc*/, char** /*argv*/) {
     return Fail(message);
   }
 
-  // 4) 数据库连接池（用户认证起就需要数据库，连不上直接失败）
+  // 5) 数据库连接池（用户认证起就需要数据库，连不上直接失败）
   auto pool = ConnectionPool::Create(config.database, 4);
   if (!pool) {
     const std::string detail = Redact(pool.GetError().detail, secrets);
@@ -78,14 +116,14 @@ int main(int /*argc*/, char** /*argv*/) {
   }
   spdlog::info("数据库连接池就绪 | 连接数={}", pool.Value()->size());
 
-  // 5) 对象存储
+  // 6) 对象存储
   auto storage = LocalObjectStorage::Create(config.storage.root);
   if (!storage) {
     spdlog::error("对象存储初始化失败 | {}", storage.GetError().message);
     return Fail(storage.GetError().message);
   }
 
-  // 6) 服务装配
+  // 7) 服务装配
   auto context = std::make_shared<AppContext>();
   context->pool = pool.Value();
   context->secrets = secrets;
@@ -158,11 +196,11 @@ int main(int /*argc*/, char** /*argv*/) {
     spdlog::warn("JWT_SECRET 未设置（开发环境可登录但 Token 无法签发；生产环境会拒绝启动）");
   }
 
-  // 7) 健康检查器（PostgreSQL / Redis / 对象存储）
+  // 8) 健康检查器（PostgreSQL / Redis / 对象存储）
   SetHealthChecker(
       std::make_shared<HealthChecker>(config.database, config.redis, config.storage, secrets));
 
-  // 8) HTTP 服务：request_id 中间件
+  // 9) HTTP 服务：request_id 中间件
   // 注意：AuthFilter 继承自 drogon::HttpFilter<AuthFilter>，由 Drogon 自动注册
   //（手动 registerFilter 会触发静态断言），控制器里按名字 "AuthFilter" 引用即可。
   RegisterRequestIdMiddleware();

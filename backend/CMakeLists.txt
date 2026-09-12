@@ -8,6 +8,7 @@ add_library(lan_file_hub_core STATIC
   src/common/http_util.cpp
   src/common/logging.cpp
   src/common/metrics.cpp
+  src/common/net.cpp
   src/common/pagination.cpp
   src/common/rate_limiter.cpp
   src/common/request_id.cpp
@@ -93,6 +94,12 @@ if(ARGON2_INCLUDE_DIR AND ARGON2_LIBRARY)
   message(STATUS "argon2: 已启用 Argon2id 密码哈希")
 else()
   message(FATAL_ERROR "找不到 argon2（头文件 ${ARGON2_INCLUDE_DIR} / 库 ${ARGON2_LIBRARY}）")
+endif()
+
+# ---- 端口自检用的 Winsock（common/net.cpp）----
+# Drogon 也会链 ws2_32，这里显式声明一次，避免依赖传递链变化后链接突然失败。
+if(WIN32)
+  target_link_libraries(lan_file_hub_core PRIVATE ws2_32)
 endif()
 
 # ---- 数据库与缓存客户端 ----
