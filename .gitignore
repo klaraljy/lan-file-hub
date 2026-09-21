@@ -55,3 +55,7 @@ Testing/
 /deploy/certs/
 *.pem
 *.key
+
+# Playwright 测试产物（失败截图/trace，体积大且可重新生成）
+frontend/test-results/
+frontend/playwright-report/
