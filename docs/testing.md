@@ -113,7 +113,9 @@
 - Playwright 端到端用例（需 `PLAYWRIGHT_E2E=1` + 后端/前端在跑）：
   `tests/e2e/core-flow.spec.ts`（核心路径）、`tests/e2e/screenshots.spec.ts`（文档截图）、
   `tests/e2e/send-to.spec.ts`（**「发送给…」按用户分享**：选人 → 发送 → 生成链接，
-  并断言链接不是 `127.0.0.1`，即手机能打开）。
+  并**解码二维码**断言扫出来就是该链接）、
+  `tests/e2e/mobile.spec.ts`（**手机端**：Pixel 7 视口下的导航抽屉 / 卡片列表 /「发送给…」可见 /
+  无横向滚动，并在 360 与 430px 复验）。
 
 | # | 测试项 |
 |---|---|

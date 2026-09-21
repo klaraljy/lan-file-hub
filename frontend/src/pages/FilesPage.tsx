@@ -48,6 +48,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { FileCardList } from '../components/FileCardList';
 import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileGrid } from '../components/FileGrid';
 import { FolderBreadcrumb } from '../components/FolderBreadcrumb';
@@ -91,6 +92,7 @@ import {
   useRootFolder,
 } from '../features/folders/useFolders';
 import { deleteFileApi } from '../services/trashApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { FileMeta } from '../types/file';
 import type { Folder } from '../types/folder';
 
@@ -102,6 +104,8 @@ export function FilesPage() {
   const { message } = AntApp.useApp();
   const navigate = useNavigate();
   const params = useParams<{ folderId?: string }>();
+  // 窄屏（手机）用卡片列表，宽屏用表格（AGENTS.md §14.1）
+  const isMobile = useIsMobile();
 
   const [editor, setEditor] = useState<EditorMode>(null);
   const [versionTarget, setVersionTarget] = useState<FileMeta | null>(null);
@@ -401,7 +405,16 @@ export function FilesPage() {
     <Card>
       <FolderBreadcrumb chain={chain} />
 
-      <Space style={{ marginBottom: 12 }} wrap>
+      {/* 工具栏：手机上换行排布，搜索框独占一行，避免撑出横向滚动 */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          alignItems: 'center',
+          marginBottom: 12,
+        }}
+      >
         <Button icon={<PlusOutlined />} onClick={openCreate} disabled={!currentId}>
           新建文件夹
         </Button>
@@ -420,7 +433,7 @@ export function FilesPage() {
         <Input.Search
           allowClear
           placeholder="在当前页中按名称过滤"
-          style={{ width: 240 }}
+          style={{ width: isMobile ? '100%' : 240 }}
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
         />
@@ -459,7 +472,7 @@ export function FilesPage() {
             过滤后 {rows.length} 项
           </Typography.Text>
         )}
-      </Space>
+      </div>
 
       <UploadPanel folderId={currentId} disabled={!user} />
 
@@ -492,12 +505,36 @@ export function FilesPage() {
         />
       )}
 
-      {showsContent(state) && viewMode === 'list' && (
+      {/* 窄屏（手机）用卡片列表：一屏一条，主按钮够大、其余收进「更多」（AGENTS.md §14.1） */}
+      {showsContent(state) && viewMode === 'list' && isMobile && (
+        <FileCardList
+          rows={rows}
+          onOpenFolder={(row) => navigate(`/files/${row.folder.id}`)}
+          onRename={(row) => openRename(row.folder)}
+          onDownload={(row) => void handleDownload(row.file)}
+          onDetail={(row) => setDetailTarget(row.file)}
+          onVersions={(row) => setVersionTarget(row.file)}
+          onShare={(row) =>
+            setShareTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
+          }
+          onPermission={(row) =>
+            setPermTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
+          }
+          onSend={(row) =>
+            setSendTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
+          }
+          onDelete={handleRowDelete}
+        />
+      )}
+
+      {showsContent(state) && viewMode === 'list' && !isMobile && (
         <Table<BrowseRow>
           rowKey="key"
           columns={columns}
           dataSource={rows}
           pagination={false}
+          // 窄一点的桌面窗口（lg 附近）也能滚动查看，不把整页撑宽
+          scroll={{ x: 'max-content' }}
           locale={{
             emptyText: (
               <Empty

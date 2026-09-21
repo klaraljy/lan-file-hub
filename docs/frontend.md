@@ -354,3 +354,26 @@ QUOTA_EXCEEDED
 
 红线：页面不展示密码、密码哈希、Token 或敏感配置（后端返回的对象里本来就没有）。
 前端的入口隐藏与 403 结果页都只是界面行为——权限一律由后端判定。
+
+## 8. 手机端适配（2026-09-21，用户明确指示）
+
+用户原话：「手机端界面适配：仍然是桌面版布局，手机上能用但挤。**修改，我用的非常的憋屈**」。
+按 [AGENTS.md](../AGENTS.md) §14.1，手机上难用属于**产品缺陷**，因此这不是可选优化。
+
+**判定**：`frontend/src/hooks/useIsMobile.ts` 统一给出「窄屏」= AntD `lg`（992px）以下。
+不直接用 `Grid.useBreakpoint()` 的原因写在那个文件里：首次测量前断点是 `undefined`，
+直接取反会让桌面端先闪一帧手机布局；阈值也只在那一处定义。触控最小高度用同一个文件的
+`TOUCH_HEIGHT`（44px），不要在组件里各写一个数字。
+
+| 区域 | 手机上的行为 |
+|---|---|
+| 应用外壳 `app/AppLayout.tsx` | 不渲染左侧栏；导航收进**抽屉**，顶部**汉堡按钮**打开，点导航项**自动关闭**；顶栏精简为「用户名（省略号）+ 角色标签 + 退出登录」，且整组 `line-height: normal`（否则会继承 Header 的 64px 行高，被 `ellipsis` 的 `vertical-align: bottom` 顶到顶栏底部——实测踩到） |
+| 文件页 `pages/FilesPage.tsx` | 列表视图改用 **卡片列表**（`components/FileCardList.tsx`）：名称 + 大小/类型/时间 + 一行操作；工具栏换成可换行 flex，搜索框独占一行 |
+| 卡片 `components/FileCardList.tsx` | **「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认 |
+| 网格 `components/FileGrid.tsx` | 列数自适应（手机 1 列 / 窄屏 2 列 / 宽屏更多）；图标按钮在手机上放大到 44px |
+| 详情 `components/FileDetailDrawer.tsx` | 宽度占满（`width="100%"`），操作按钮纵向排列、整行可点 |
+| 上传 `components/UploadPanel.tsx` | 任务行可换行：文件名省略号、状态与按钮整组换行，按钮在手机上放大 |
+
+验收：`frontend/tests/e2e/mobile.spec.ts`（Pixel 7 真机视口）覆盖
+「汉堡开抽屉 → 点导航自动关 → 上传 → 卡片列表 → 「发送给…」可见 → 无横向滚动」，
+并在 **360 / 430px** 两种宽度复验不溢出；截图见 `docs/images/mobile-files.png`、`mobile-nav.png`。

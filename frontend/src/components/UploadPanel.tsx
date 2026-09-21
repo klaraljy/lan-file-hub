@@ -17,6 +17,7 @@ import {
 } from '@ant-design/icons';
 
 import { useUploads } from '../features/uploads/useUploads';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { UploadTask, UploadTaskStatus } from '../types/upload';
 
 const STATUS_LABELS: Record<UploadTaskStatus, string> = {
@@ -66,6 +67,9 @@ export function UploadPanel({ folderId, disabled }: Props) {
     useUploads(folderId);
   const [resumeTarget, setResumeTarget] = useState<string | null>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
+  // 手机上按钮放大，手指点得准（AGENTS.md §14.1）
+  const listButtonProps = isMobile ? { size: 'large' as const } : { size: 'small' as const };
 
   const active = tasks.filter(
     (task) => task.status === 'uploading' || task.status === 'hashing' || task.status === 'retrying',
@@ -118,19 +122,28 @@ export function UploadPanel({ folderId, disabled }: Props) {
 
         {tasks.length > 0 && (
           <>
-            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Typography.Text strong>
+            {/* 手机上换行排布：标题不拆开，右侧一组整体换行（AGENTS.md §14.1） */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
                 上传任务（{active.length} 进行中 / 共 {tasks.length}）
               </Typography.Text>
-              <Space>
-                <Typography.Text type="secondary">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
                   {formatBytes(doneBytes)} / {formatBytes(totalBytes)}
                 </Typography.Text>
-                <Button size="small" onClick={clearFinished}>
+                <Button {...listButtonProps} onClick={clearFinished}>
                   清除已结束
                 </Button>
-              </Space>
-            </Space>
+              </div>
+            </div>
 
             <Progress percent={overallPercent} size="small" />
 
@@ -182,62 +195,96 @@ function TaskRow({ task, onPause, onResume, onPickFile, onCancel, onRetry, onFor
   const running = task.status === 'uploading' || task.status === 'hashing' || task.status === 'retrying';
   const done = task.status === 'completed';
   const failed = task.status === 'failed' || task.status === 'expired';
+  const isMobile = useIsMobile();
+  // 手机上按钮放大，手指点得准（AGENTS.md §14.1）
+  const rowButtonProps = isMobile ? { size: 'large' as const } : { size: 'small' as const };
 
   return (
     <div style={{ marginBottom: 10 }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }} align="center">
-        <Space size={6}>
-          <Typography.Text ellipsis style={{ maxWidth: 320 }}>
+      {/* 手机上换行排布：文件名可省略，操作按钮不会被挤出屏幕（避免横向滚动） */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 6,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+            alignItems: 'center',
+            minWidth: 0,
+            flex: '1 1 180px',
+          }}
+        >
+          <Typography.Text ellipsis style={{ maxWidth: isMobile ? '100%' : 320, minWidth: 0 }}>
             {task.name}
           </Typography.Text>
-          <Tag color={STATUS_COLORS[task.status]}>{STATUS_LABELS[task.status]}</Tag>
+          <Tag color={STATUS_COLORS[task.status]} style={{ whiteSpace: 'nowrap' }}>
+            {STATUS_LABELS[task.status]}
+          </Tag>
           {task.totalChunks > 0 && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
               {task.completedChunks.length}/{task.totalChunks} 块
             </Typography.Text>
           )}
           {task.attempts > 0 && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
               已重试 {task.attempts} 次
             </Typography.Text>
           )}
-        </Space>
-        <Space size={4}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             {formatBytes(task.size)}
           </Typography.Text>
           {running && (
             <Tooltip title="暂停">
-              <Button size="small" type="text" icon={<PauseOutlined />} onClick={onPause} />
+              <Button {...rowButtonProps} type="text" icon={<PauseOutlined />} onClick={onPause} />
             </Tooltip>
           )}
           {task.status === 'paused' && !task.needsFile && (
             <Tooltip title="继续">
-              <Button size="small" type="text" icon={<PlayCircleOutlined />} onClick={onResume} />
+              <Button
+                {...rowButtonProps}
+                type="text"
+                icon={<PlayCircleOutlined />}
+                onClick={onResume}
+              />
             </Tooltip>
           )}
           {task.needsFile && (
-            <Button size="small" onClick={onPickFile}>
+            <Button {...rowButtonProps} onClick={onPickFile}>
               选择文件继续
             </Button>
           )}
           {failed && !task.needsFile && (
             <Tooltip title="重试">
-              <Button size="small" type="text" icon={<RedoOutlined />} onClick={onRetry} />
+              <Button {...rowButtonProps} type="text" icon={<RedoOutlined />} onClick={onRetry} />
             </Tooltip>
           )}
           {!done && !running && (
             <Tooltip title="取消上传">
-              <Button size="small" type="text" danger icon={<CloseOutlined />} onClick={onCancel} />
+              <Button
+                {...rowButtonProps}
+                type="text"
+                danger
+                icon={<CloseOutlined />}
+                onClick={onCancel}
+              />
             </Tooltip>
           )}
           {done && (
-            <Button size="small" type="text" onClick={onForget}>
+            <Button {...rowButtonProps} type="text" onClick={onForget}>
               移除
             </Button>
           )}
-        </Space>
-      </Space>
+        </div>
+      </div>
       <Progress
         percent={task.percent}
         size="small"

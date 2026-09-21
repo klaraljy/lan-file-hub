@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons';
 
 import { formatBytes, typeLabel, type BrowseRow } from '../features/files/listView';
+import { TOUCH_HEIGHT, useIsMobile } from '../hooks/useIsMobile';
 
 interface Props {
   rows: BrowseRow[];
@@ -41,6 +42,12 @@ export function FileGrid({
   onSend,
   onDelete,
 }: Props) {
+  const isMobile = useIsMobile();
+  // 手机上图标按钮要够大才点得准（AGENTS.md §14.1）
+  const iconButtonProps = isMobile
+    ? { size: 'middle' as const, style: { minWidth: TOUCH_HEIGHT, height: TOUCH_HEIGHT } }
+    : { size: 'small' as const };
+
   if (rows.length === 0) {
     return (
       <Empty
@@ -50,10 +57,11 @@ export function FileGrid({
     );
   }
 
+  // 列数随宽度自适应：手机 1 列（卡片太窄时按钮会挤在一起）、窄屏 2 列、宽屏更多列
   return (
     <Row gutter={[12, 12]}>
       {rows.map((row) => (
-        <Col key={row.key} xs={12} sm={8} md={6} lg={6} xl={4}>
+        <Col key={row.key} xs={24} sm={12} md={8} lg={6} xl={4}>
           <Card
             size="small"
             hoverable
@@ -83,7 +91,7 @@ export function FileGrid({
               {/* 按人发送：主按钮，放在最显眼的位置（AGENTS.md §14.3） */}
               <Button
                 type="primary"
-                size="small"
+                size={isMobile ? 'large' : 'small'}
                 block
                 icon={<SendOutlined />}
                 onClick={(event) => {
@@ -95,13 +103,13 @@ export function FileGrid({
               </Button>
 
               {/* 点击卡片本身是「打开/详情」，图标按钮承担具体操作 */}
-              <Space size={0} style={{ width: '100%', justifyContent: 'center' }}>
+              <Space size={isMobile ? 4 : 0} style={{ width: '100%', justifyContent: 'center' }}>
                 {row.kind === 'file' ? (
                   <>
                     <Tooltip title="下载">
                       <Button
                         type="text"
-                        size="small"
+                        {...iconButtonProps}
                         icon={<DownloadOutlined />}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -112,7 +120,7 @@ export function FileGrid({
                     <Tooltip title="版本历史">
                       <Button
                         type="text"
-                        size="small"
+                        {...iconButtonProps}
                         icon={<HistoryOutlined />}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -123,7 +131,7 @@ export function FileGrid({
                     <Tooltip title="详情">
                       <Button
                         type="text"
-                        size="small"
+                        {...iconButtonProps}
                         icon={<InfoCircleOutlined />}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -136,7 +144,7 @@ export function FileGrid({
                 <Tooltip title="分享">
                   <Button
                     type="text"
-                    size="small"
+                    {...iconButtonProps}
                     icon={<ShareAltOutlined />}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -159,7 +167,7 @@ export function FileGrid({
                 >
                   <Button
                     type="text"
-                    size="small"
+                    {...iconButtonProps}
                     danger
                     icon={<DeleteOutlined />}
                     onClick={(event) => event.stopPropagation()}

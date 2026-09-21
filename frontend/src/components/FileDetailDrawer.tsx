@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 
 import { formatBytes, typeLabel } from '../features/files/listView';
+import { TOUCH_HEIGHT, useIsMobile } from '../hooks/useIsMobile';
 import type { FileMeta } from '../types/file';
 
 interface Props {
@@ -44,13 +45,19 @@ export function FileDetailDrawer({
   onOpenPermissions,
   onOpenSend,
 }: Props) {
+  const isMobile = useIsMobile();
   const status = file ? STATUS_TEXT[file.status] : null;
+  // 手机上按钮要大（手指点得准），并且纵向排列，避免一行挤 4 个
+  const actionProps = isMobile
+    ? { block: true, size: 'large' as const, style: { height: TOUCH_HEIGHT } }
+    : {};
 
   return (
     <Drawer
       open={open}
       title={file ? `文件详情：${file.name}` : '文件详情'}
-      width={520}
+      // 手机占满整屏；桌面固定 520
+      width={isMobile ? '100%' : 520}
       onClose={onClose}
       destroyOnClose
     >
@@ -95,18 +102,27 @@ export function FileDetailDrawer({
             </Descriptions.Item>
           </Descriptions>
 
-          <Space wrap>
+          <Space
+            direction={isMobile ? 'vertical' : 'horizontal'}
+            wrap
+            style={{ width: isMobile ? '100%' : undefined }}
+          >
             {/* 主操作：把文件发给某个人（按用户名/邮箱选人） */}
-            <Button type="primary" icon={<SendOutlined />} onClick={() => onOpenSend(file)}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              {...actionProps}
+              onClick={() => onOpenSend(file)}
+            >
               发送给…
             </Button>
-            <Button icon={<HistoryOutlined />} onClick={() => onOpenVersions(file)}>
+            <Button icon={<HistoryOutlined />} {...actionProps} onClick={() => onOpenVersions(file)}>
               版本历史
             </Button>
-            <Button icon={<ShareAltOutlined />} onClick={() => onOpenShare(file)}>
+            <Button icon={<ShareAltOutlined />} {...actionProps} onClick={() => onOpenShare(file)}>
               分享
             </Button>
-            <Button icon={<TeamOutlined />} onClick={() => onOpenPermissions(file)}>
+            <Button icon={<TeamOutlined />} {...actionProps} onClick={() => onOpenPermissions(file)}>
               权限
             </Button>
           </Space>
