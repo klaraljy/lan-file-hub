@@ -84,8 +84,4 @@ export const sharingApi = {
     const response = await http.get<ApiEnvelope<PublicShareView>>(`/public/shares/${token}`);
     return unwrap(response.data);
   },
-
-  buildPublicUrl(token: string): string {
-    return `${window.location.origin}/s/${token}`;
-  },
 };

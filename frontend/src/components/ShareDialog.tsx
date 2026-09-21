@@ -31,7 +31,7 @@ import {
   useRevokeShare,
   useShares,
 } from '../features/sharing/useSharing';
-import { sharingApi } from '../services/sharingApi';
+import { buildShareUrl } from '../services/publicUrl';
 import type { FileMeta } from '../types/file';
 import type { Folder } from '../types/folder';
 import type { ShareLink, SharePermission } from '../types/share';
@@ -72,7 +72,9 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
   const createShare = useCreateShare(resourceId);
   const revokeShare = useRevokeShare(resourceId);
   const [form] = Form.useForm<{ permission: SharePermission; expires: number; maxDownloads?: number }>();
-  const [createdToken, setCreatedToken] = useState<{ token: string; url: string } | null>(null);
+  const [createdToken, setCreatedToken] = useState<{ token: string; url: string; warning?: string } | null>(
+    null,
+  );
 
   async function handleCreate() {
     const values = await form.validateFields();
@@ -82,10 +84,8 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
         expiresInSeconds: values.expires ? Number(values.expires) : undefined,
         maxDownloads: values.maxDownloads ? Number(values.maxDownloads) : undefined,
       });
-      setCreatedToken({
-        token: created.token ?? '',
-        url: sharingApi.buildPublicUrl(created.token ?? ''),
-      });
+      const built = buildShareUrl(created.token ?? '');
+      setCreatedToken({ token: created.token ?? '', url: built.url, warning: built.warning });
       message.success('分享链接已创建，请立刻复制（只显示这一次）');
     } catch (error) {
       message.error(sharingErrorMessage(error));
@@ -167,6 +167,10 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
           style={{ marginBottom: 12 }}
           message="文件夹分享支持浏览，暂不支持打包下载"
         />
+      )}
+
+      {createdToken?.warning && (
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={createdToken.warning} />
       )}
 
       {createdToken && (

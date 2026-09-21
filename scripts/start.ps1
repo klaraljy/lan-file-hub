@@ -227,6 +227,9 @@ if (-not $NoFrontend) {
     # 外层（终端/脚本调用方）会一直等它退出——表现为"启动脚本卡死"。
     # LFH_BACKEND_URL 让 vite 的代理跟着 .env 的端口走，前端不用改配置。
     $env:LFH_BACKEND_URL = $BackendUrl
+    # LFH_LAN_URL 让「分享链接」用局域网地址生成：否则在 127.0.0.1 下生成的链接手机打不开
+    # （AGENTS.md §14.4，前端读 frontend/src/services/publicUrl.ts）。
+    $env:LFH_LAN_URL = Get-LanFrontendUrl
     Start-Process -FilePath 'cmd.exe' -WindowStyle Minimized `
       -WorkingDirectory (Join-Path $ProjectRoot 'frontend') `
       -RedirectStandardOutput (Join-Path $env:TEMP 'lfh-frontend.log') `

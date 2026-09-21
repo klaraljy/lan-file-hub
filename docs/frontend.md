@@ -108,6 +108,29 @@
 
 分享弹窗的字段、交互与明文 Token 展示规则见 [permissions.md](permissions.md)。
 
+链接地址由 `src/services/publicUrl.ts` 统一生成：**用户用本机地址（127.0.0.1/localhost）打开页面时，
+自动换成局域网地址并给出提示** —— 否则生成的链接在别人手机上指向手机自己，必然打不开
+（AGENTS.md §14.4，真实故障）。局域网地址由 `scripts/start.ps1` 通过 `LFH_LAN_URL`
+→ vite `define` → `import.meta.env.VITE_LFH_LAN_URL` 注入。
+
+### 2.5.1 发送给…（按用户分享，2026-09-21 新增）
+
+解决"我要把这个文件发给某个人"这件事 —— 面向不懂技术的用户，全程不出现 UUID、不出现"权限位"这类词。
+
+- 入口：**主按钮「发送给…」**（`type="primary"`），三个地方都有，都在最显眼的位置：
+  列表行（文件 / 文件夹）、网格卡片、文件详情抽屉。
+- 弹窗（`src/components/SendToDialog.tsx`）分两块：
+  1. **选人 → 选对方能做什么 → 发送**：选人走 `GET /api/v1/users/lookup?q=`（`src/services/usersApi.ts`
+     + `src/features/sharing/useUserLookup.ts`，关键词 ≥2 字、300ms 防抖），下拉里只显示用户名；
+     权限用大白话（`PERMISSION_LABELS`：只读 / 可写）。发送成功提示：**"对方登录后在左侧
+     「分享给我的」里就能看到并下载"**。
+  2. **对方还没有账号？复制链接发给他**：直接生成分享链接（只读、7 天有效）并给出可复制的完整地址；
+     链接地址同样走 `publicUrl.ts`，需要提醒时用 `Alert` 显示。
+- 接收方侧：别人授权给他的东西出现在左侧「分享给我的」（`SharedWithMePage`），
+  文件可直接下载，文件夹可进去浏览。
+- 数据绑定复用既有 hooks（`useGrantPermission` / `useCreateShare`），组件不发裸请求；
+  错误统一走 `sharingErrorMessage`。
+
 ### 2.6 回收站
 
 支持：

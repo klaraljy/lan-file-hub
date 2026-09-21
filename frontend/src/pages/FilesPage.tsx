@@ -40,6 +40,7 @@ import {
   InfoCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SendOutlined,
   ShareAltOutlined,
   SortAscendingOutlined,
   TeamOutlined,
@@ -51,6 +52,7 @@ import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileGrid } from '../components/FileGrid';
 import { FolderBreadcrumb } from '../components/FolderBreadcrumb';
 import { PermissionDialog } from '../components/PermissionDialog';
+import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { UploadPanel } from '../components/UploadPanel';
 import { VersionHistoryModal } from '../components/VersionHistoryModal';
@@ -106,6 +108,8 @@ export function FilesPage() {
   const [detailTarget, setDetailTarget] = useState<FileMeta | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareTarget>(null);
   const [permTarget, setPermTarget] = useState<ShareTarget>(null);
+  // 「发送给…」的目标（按人发送，AGENTS.md §14.3）
+  const [sendTarget, setSendTarget] = useState<ShareTarget>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [keyword, setKeyword] = useState('');
@@ -298,6 +302,15 @@ export function FilesPage() {
               >
                 版本历史
               </Button>
+              {/* 主操作：按人发送（AGENTS.md §14.3），放在最显眼的位置 */}
+              <Button
+                type="primary"
+                size="small"
+                icon={<SendOutlined />}
+                onClick={() => setSendTarget({ file: row.file })}
+              >
+                发送给…
+              </Button>
               <Button
                 type="link"
                 size="small"
@@ -339,6 +352,15 @@ export function FilesPage() {
               onClick={() => openRename(row.folder)}
             >
               重命名
+            </Button>
+            {/* 主操作：按人发送（文件夹同样支持，AGENTS.md §14.3） */}
+            <Button
+              type="primary"
+              size="small"
+              icon={<SendOutlined />}
+              onClick={() => setSendTarget({ folder: row.folder })}
+            >
+              发送给…
             </Button>
             <Button
               type="link"
@@ -499,6 +521,9 @@ export function FilesPage() {
           onShare={(row) =>
             setShareTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
           }
+          onSend={(row) =>
+            setSendTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
+          }
           onDelete={handleRowDelete}
         />
       )}
@@ -520,6 +545,7 @@ export function FilesPage() {
         onOpenVersions={(file) => setVersionTarget(file)}
         onOpenShare={(file) => setShareTarget({ file })}
         onOpenPermissions={(file) => setPermTarget({ file })}
+        onOpenSend={(file) => setSendTarget({ file })}
       />
 
       {/* 版本历史：只增不减，恢复历史版本会追加新版本 */}
@@ -544,6 +570,15 @@ export function FilesPage() {
         folder={permTarget?.folder ?? null}
         open={permTarget !== null}
         onClose={() => setPermTarget(null)}
+      />
+
+      {/* 发送给…：选人 → 选权限 → 发送；对方没账号时同一弹窗里生成链接（AGENTS.md §14.3/§14.4） */}
+      <SendToDialog
+        open={sendTarget !== null}
+        onClose={() => setSendTarget(null)}
+        resourceId={sendTarget?.file?.id ?? sendTarget?.folder?.id ?? ''}
+        resourceName={sendTarget?.file?.name ?? sendTarget?.folder?.name ?? ''}
+        isFolder={Boolean(sendTarget?.folder)}
       />
 
       <Modal

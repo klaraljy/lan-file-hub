@@ -110,6 +110,11 @@
 
 使用 Vitest 和 Playwright 测试：
 
+- Playwright 端到端用例（需 `PLAYWRIGHT_E2E=1` + 后端/前端在跑）：
+  `tests/e2e/core-flow.spec.ts`（核心路径）、`tests/e2e/screenshots.spec.ts`（文档截图）、
+  `tests/e2e/send-to.spec.ts`（**「发送给…」按用户分享**：选人 → 发送 → 生成链接，
+  并断言链接不是 `127.0.0.1`，即手机能打开）。
+
 | # | 测试项 |
 |---|---|
 | 1 | 登录流程 |

@@ -13,6 +13,7 @@ import {
   FolderOutlined,
   HistoryOutlined,
   InfoCircleOutlined,
+  SendOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 
@@ -25,6 +26,8 @@ interface Props {
   onDetail: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onVersions: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onShare: (row: BrowseRow) => void;
+  /** 「发送给…」：按人发送（AGENTS.md §14.3） */
+  onSend: (row: BrowseRow) => void;
   onDelete: (row: BrowseRow) => void;
 }
 
@@ -35,6 +38,7 @@ export function FileGrid({
   onDetail,
   onVersions,
   onShare,
+  onSend,
   onDelete,
 }: Props) {
   if (rows.length === 0) {
@@ -75,6 +79,20 @@ export function FileGrid({
               >
                 {row.kind === 'folder' ? '文件夹' : `${formatBytes(row.size_bytes)} · ${typeLabel(row.file)}`}
               </Typography.Text>
+
+              {/* 按人发送：主按钮，放在最显眼的位置（AGENTS.md §14.3） */}
+              <Button
+                type="primary"
+                size="small"
+                block
+                icon={<SendOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSend(row);
+                }}
+              >
+                发送给…
+              </Button>
 
               {/* 点击卡片本身是「打开/详情」，图标按钮承担具体操作 */}
               <Space size={0} style={{ width: '100%', justifyContent: 'center' }}>

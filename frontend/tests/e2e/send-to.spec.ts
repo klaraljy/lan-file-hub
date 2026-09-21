@@ -1,0 +1,84 @@
+/**
+ * 「发送给…」按用户分享的端到端测试（AGENTS.md §14.3 / §14.4）。
+ *
+ * 为什么单独一个文件：这是用户真机试用后提出的核心诉求——"我要把文件发给某个人"，
+ * 必须验证到**浏览器里真的能点出来**，而不是只过类型检查与单测。
+ *
+ * 前置与执行方式同 core-flow.spec.ts：
+ *   1. PostgreSQL/Redis 在跑，后端已启动（默认 127.0.0.1:9080）；
+ *   2. 前端 dev server 在 5173；
+ *   3. `$env:PLAYWRIGHT_E2E='1'; npx playwright test send-to`
+ *
+ * 「库里有别的用户」这一前提由 E2E_LOOKUP_KEYWORD 控制（默认 `klara`，本机库里确实有）；
+ * 换环境时用环境变量指定一个真实存在的用户名即可。
+ */
+import { expect, test } from '@playwright/test';
+
+const ENABLED = process.env.PLAYWRIGHT_E2E === '1';
+test.skip(!ENABLED, '未设置 PLAYWRIGHT_E2E=1（需要先安装 Playwright 浏览器与后端服务）');
+
+const USERNAME = process.env.E2E_SENDTO_USERNAME ?? `e2esend${Date.now()}`;
+const EMAIL = `${USERNAME}@example.com`;
+const PASSWORD = 'correct-horse-battery';
+const SAMPLE_NAME = 'sendto-sample.txt';
+/** 库里必须**已经存在**的另一个用户（用于"发给谁"的搜索结果） */
+const LOOKUP_KEYWORD = process.env.E2E_LOOKUP_KEYWORD ?? 'klara';
+
+/** Ant Design 会给「两个汉字」的按钮插入空格（发送 → 发 送） */
+function buttonName(text: string): RegExp {
+  return new RegExp(text.split('').join('\\s*'));
+}
+
+test.describe('发送给某个用户', () => {
+  test('选人 → 发送；生成的链接必须是手机能打开的局域网地址', async ({ page }) => {
+    // 1) 注册一个全新用户（避免与既有数据冲突）
+    await page.goto('/register');
+    await page.getByLabel('用户名').fill(USERNAME);
+    await page.getByLabel('邮箱').fill(EMAIL);
+    await page.getByLabel('密码', { exact: true }).fill(PASSWORD);
+    await page.getByLabel('确认密码').fill(PASSWORD);
+    await page.getByRole('button', { name: buttonName('注册') }).click();
+    await expect(page).toHaveURL(/\/files/);
+
+    // 2) 上传一个文件：文件行上才会有「发送给…」
+    await page.setInputFiles('input[type="file"]', {
+      name: SAMPLE_NAME,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('send-to e2e\n', 'utf-8'),
+    });
+    await expect(page.getByRole('row', { name: new RegExp(SAMPLE_NAME) }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // 3) 点显眼的主按钮「发送给…」（AGENTS.md §14.3 要求不许藏在更多菜单里）
+    await page.getByRole('button', { name: /发送给/ }).first().click();
+    await expect(page.getByText('对方登录后，在左侧「分享给我的」里就能看到并下载。')).toBeVisible();
+
+    // 4) 选人：输入关键词 → 下拉里出现库里已有的用户 → 选中
+    //    注意：AntD 的 Select 占位符渲染成 span（不是 input 的 placeholder 属性），
+    //    所以这里按 .ant-select 定位，再用键盘输入触发 onSearch。
+    const userSelect = page.locator('.ant-modal .ant-select').first();
+    await userSelect.click();
+    await page.keyboard.type(LOOKUP_KEYWORD, { delay: 40 });
+    const option = page.locator('.ant-select-item-option').filter({ hasText: LOOKUP_KEYWORD }).first();
+    await expect(option).toBeVisible({ timeout: 15_000 });
+    await option.click();
+
+    // 5) 发送：断言成功提示（明确告诉用户对方去哪拿）
+    //    按钮带 SendOutlined 图标，可访问名形如 "send 发 送"，所以匹配结尾即可
+    await page.getByRole('button', { name: /发\s*送$/ }).click();
+    await expect(page.getByText(/已发送给/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/「分享给我的」/).first()).toBeVisible();
+
+    // 6) 「对方还没有账号」这条路：生成的链接必须是局域网地址，不能是 127.0.0.1
+    //    （用户实测踩到的坑：127.0.0.1 的链接在手机上指手机自己，必然打不开）
+    await page.getByRole('button', { name: /发送给/ }).first().click();
+    await page.getByRole('button', { name: /生成分享链接/ }).click();
+    // 注意：AntD Select 的内部 input 也带 readonly，必须限定到 .ant-input 才是链接输入框
+    const linkInput = page.locator('.ant-modal input.ant-input[readonly]');
+    await expect(linkInput).toHaveValue(/\/s\/.+/, { timeout: 15_000 });
+    const url = await linkInput.inputValue();
+    expect(url.startsWith('http://127.0.0.1')).toBe(false);
+    expect(url.startsWith('http://localhost')).toBe(false);
+  });
+});

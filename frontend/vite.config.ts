@@ -7,10 +7,18 @@ import react from '@vitejs/plugin-react';
 // 那时改 .env 的 HTTP_PORT 即可，前端不用动。
 const backendUrl = process.env.LFH_BACKEND_URL ?? 'http://127.0.0.1:8080';
 
+// 这台电脑的局域网访问地址（scripts/start.ps1 注入）。分享链接必须用它：
+// 用户在电脑上用 127.0.0.1 打开时，拼出来的链接别人手机打不开（AGENTS.md §14.4）。
+const lanUrl = process.env.LFH_LAN_URL ?? '';
+
 // 注意：测试配置放在 vitest.config.ts —— vitest 自带一份 vite，
 // 把 test 字段写在这里会让 plugins 的类型对不上。
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // 注入给前端代码读（见 src/services/publicUrl.ts）；没注入时是空字符串
+    'import.meta.env.VITE_LFH_LAN_URL': JSON.stringify(lanUrl),
+  },
   server: {
     // 必须监听所有网卡：这是局域网文件服务，手机 / 其它电脑要用 http://<本机IP>:5173 打开。
     // 只绑 localhost 时手机连不上（本项目实测踩到过）。

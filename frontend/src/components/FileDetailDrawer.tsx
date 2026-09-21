@@ -10,6 +10,7 @@
 import { Button, Descriptions, Drawer, Space, Tag, Typography } from 'antd';
 import {
   HistoryOutlined,
+  SendOutlined,
   ShareAltOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
@@ -24,6 +25,8 @@ interface Props {
   onOpenVersions: (file: FileMeta) => void;
   onOpenShare: (file: FileMeta) => void;
   onOpenPermissions: (file: FileMeta) => void;
+  /** 「发送给…」：按人发送（AGENTS.md §14.3） */
+  onOpenSend: (file: FileMeta) => void;
 }
 
 const STATUS_TEXT: Record<FileMeta['status'], { text: string; color: string }> = {
@@ -39,6 +42,7 @@ export function FileDetailDrawer({
   onOpenVersions,
   onOpenShare,
   onOpenPermissions,
+  onOpenSend,
 }: Props) {
   const status = file ? STATUS_TEXT[file.status] : null;
 
@@ -92,6 +96,10 @@ export function FileDetailDrawer({
           </Descriptions>
 
           <Space wrap>
+            {/* 主操作：把文件发给某个人（按用户名/邮箱选人） */}
+            <Button type="primary" icon={<SendOutlined />} onClick={() => onOpenSend(file)}>
+              发送给…
+            </Button>
             <Button icon={<HistoryOutlined />} onClick={() => onOpenVersions(file)}>
               版本历史
             </Button>
