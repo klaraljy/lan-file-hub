@@ -310,7 +310,7 @@ ninja / node / npm / git / docker   已在 PATH
   否则它会一直等输入，看起来像卡死（自动化测试踩到过）。
 - 后端"在不在跑"**只看 `/health/live`，不看进程名**：Drogon 绑定端口失败时只打一行 `FATAL`
   日志、进程还可能继续留在事件循环里（僵尸：进程活着、端口没人听）。只看进程名会误判成
-  "已在运行"从而永远不再启动；`start.ps1` 现在按健康探活判断，并清掉占着 8080 却不健康的旧进程。
+  "已在运行"从而永远不再启动；`start.ps1` 现在按健康探活判断，并清掉占着后端端口却不健康的旧进程。
 - 后端端口**只有一处配置**：`.env` 的 `HTTP_PORT`（本机是 `9080`，因为 8080 落在 Windows
   保留段里）。`scripts/_env.ps1` 负责读取，`menu.ps1` / `start.ps1` / `bench.ps1` 共用；
   前端代理地址由 `start.ps1` 用 `LFH_BACKEND_URL` 注入 vite。**不要在脚本里硬编码端口。**
@@ -322,6 +322,12 @@ ninja / node / npm / git / docker   已在 PATH
   `.\scripts\create-admin.ps1 -Username admin -Email a@b.c`（口令交互输入、不回显，
   至少 8 位；用户名已存在则**提升为 ADMIN 且不改口令**，已是管理员则幂等跳过）。
   **口令只从环境变量传给工具，不进命令行、不落盘、不进日志**，仓库里不放默认口令。
+- **手机 / 其它电脑访问**：前端 vite 必须监听所有网卡（`frontend/vite.config.ts` 里
+  `host: true` + `strictPort: true`）——只绑 localhost 时手机连不上（实测踩到过）。
+  `start.ps1` 与菜单状态会打印 `📱 手机访问: http://<局域网IP>:5173`。
+  手机只需访问 **5173**：`/api` 与 `/health` 由 vite 代理到本机后端，不需要手机直连后端端口
+  （本机实测 `node.exe` 与 `lan_file_hub_server.exe` 都有 Public Profile 入站放行规则）。
+  校园网常开**客户端隔离**导致设备互访不通，真机测试优先用**手机热点**（电脑连手机热点）。
 - 排查启动问题：后端日志 `%TEMP%\lfh-backend.log`，前端日志 `%TEMP%\lfh-frontend.log`。
 
 ### 仍未验证（不要写成已完成）
