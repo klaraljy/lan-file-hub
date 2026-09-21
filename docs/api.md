@@ -770,6 +770,31 @@ POST /api/v1/resources/{resource_id}/shares
 - `expires_in_seconds` 最长 365 天；`max_downloads` 必须大于 0；两者都可省略（不过期、不限次）。
 - 撤销：`DELETE /api/v1/shares/{share_id}`，幂等；只有分享创建者或资源所有者能撤销。
 
+## 用户名录端点（按人分享，2026-09-21 新增）
+
+```text
+GET /api/v1/users/lookup?q=<关键词>
+```
+
+给「发送给…」用：**按用户名或邮箱找人**，让用户可以选人分享，而不是填用户 UUID
+（用户实测反馈：界面上根本查不到 UUID，等于没法按人分享）。
+
+- 需要登录（`AuthFilter`）；任何普通用户都可调用。
+- `q` 去掉首尾空白后**至少 2 个字符**，否则返回 `400 INVALID_ARGUMENT`。
+- 匹配规则：用户名或邮箱的**大小写不敏感模糊匹配**（`ILIKE '%…%'`，通配符已转义）；
+  排除调用者自己，排除 `status != ACTIVE` 的用户；最多返回 **10** 条。
+- **只返回 `id` 与 `username`**，不返回邮箱、角色、配额等任何其它字段（最小暴露）：
+
+```json
+{
+  "data": { "items": [ { "id": "user-uuid", "username": "alice" } ] },
+  "request_id": "uuid"
+}
+```
+
+- 拿到 `id` 后按既有的授权接口分享：`PUT /api/v1/resources/{resource_id}/permissions/{user_id}`
+  （见「权限端点」）。
+
 公开访问（无需登录）：
 
 - `GET /api/v1/public/shares/{token}` → 资源名、类型、大小、MIME、权限、剩余次数、`can_download`。

@@ -47,6 +47,7 @@ add_library(lan_file_hub_core STATIC
   src/application/trash_service.cpp
   src/application/cleanup_service.cpp
   src/application/sharing_service.cpp
+  src/application/user_directory.cpp
   # api
   src/api/error_response.cpp
   src/api/json_body.cpp
@@ -63,6 +64,7 @@ add_library(lan_file_hub_core STATIC
   src/api/trash_controller.cpp
   src/api/permission_controller.cpp
   src/api/share_controller.cpp
+  src/api/user_lookup_controller.cpp
   src/api/request_id_middleware.cpp
   src/api/security_headers.cpp
 )

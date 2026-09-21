@@ -46,6 +46,7 @@ add_executable(lan_file_hub_integration_tests
   integration/trash_flow_test.cpp
   integration/sharing_flow_test.cpp
   integration/admin_flow_test.cpp
+  integration/user_directory_test.cpp
   integration/fault_injection_test.cpp
 )
 
