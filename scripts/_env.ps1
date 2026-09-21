@@ -33,3 +33,22 @@ function Get-BackendPort {
 }
 
 function Get-BackendUrl { return ('http://127.0.0.1:' + (Get-BackendPort)) }
+
+# 本机在局域网里的 IPv4（手机/其它电脑访问用的那个地址）。
+# 跳过回环、169.254 自动地址与虚拟网卡（VMware / vEthernet / WSL / 本地连接*）。
+function Get-LanAddress {
+  $candidates = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+    Where-Object { $_.InterfaceAlias -notlike '*VMware*' -and $_.InterfaceAlias -notlike '*vEthernet*' -and $_.InterfaceAlias -notlike '本地连接*' }
+  $preferred = $candidates | Where-Object { $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1
+  if ($preferred) { return $preferred.IPAddress }
+  if ($candidates) { return ($candidates | Select-Object -First 1).IPAddress }
+  return ''
+}
+
+# 手机/其它设备该打开的地址（前端端口 5173；没拿到局域网地址就返回空串）
+function Get-LanFrontendUrl {
+  $lan = Get-LanAddress
+  if (-not $lan) { return '' }
+  return ('http://' + $lan + ':5173')
+}

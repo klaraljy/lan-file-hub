@@ -31,6 +31,11 @@ function Get-StatusLines {
   $lines += ('后端(' + $BackendPort + '):   ' + $(if ($backendUp) { '运行中' } else { '未运行' }))
   $lines += ('前端(5173):   ' + $(if ($frontendUp) { '运行中' } else { '未运行' }))
   $lines += ('依赖(5432/6379): ' + $(if ($depsUp) { '可用' } else { '不可用（需要 Docker Desktop）' }))
+  $lanUrl = Get-LanFrontendUrl
+  if ($lanUrl) {
+    $lanOk = if ($frontendUp) { '' } else { '（前端没起，先按 1）' }
+    $lines += ('手机访问:      ' + $lanUrl + '  ' + $lanOk)
+  }
   if ($backendUp) {
     $health = ''
     try { $health = (Invoke-WebRequest -Uri ($BackendUrl + '/health/ready') -UseBasicParsing -TimeoutSec 4).StatusCode } catch { $health = '未就绪' }

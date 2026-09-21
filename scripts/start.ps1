@@ -258,6 +258,13 @@ Write-Host ''
 Write-Host '  ✅ 启动完成' -ForegroundColor Green
 Write-Host ('     前端: ' + $FrontendUrl + '    后端: ' + $BackendUrl) -ForegroundColor White
 Write-Host ('     指标: ' + $BackendUrl + '/metrics     健康: ' + $BackendUrl + '/health/ready') -ForegroundColor DarkGray
+# 手机/其它电脑要在同一网络下打开这个地址（前端已监听 0.0.0.0）
+$lanUrl = Get-LanFrontendUrl
+if ($lanUrl) {
+  Write-Host ('     📱 手机访问: ' + $lanUrl + '（需与电脑在同一 WiFi / 热点）') -ForegroundColor Yellow
+} else {
+  Write-Host '     📱 手机访问: 没检测到局域网 IP（检查网络连接）' -ForegroundColor DarkGray
+}
 Write-Host '     停止: .\scripts\stop.ps1' -ForegroundColor DarkGray
 Write-Host ''
 

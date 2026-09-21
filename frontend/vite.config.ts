@@ -12,7 +12,12 @@ const backendUrl = process.env.LFH_BACKEND_URL ?? 'http://127.0.0.1:8080';
 export default defineConfig({
   plugins: [react()],
   server: {
+    // 必须监听所有网卡：这是局域网文件服务，手机 / 其它电脑要用 http://<本机IP>:5173 打开。
+    // 只绑 localhost 时手机连不上（本项目实测踩到过）。
+    host: true,
     port: 5173,
+    // 端口被占用就直接失败，不要悄悄换到 5174（手机上记的地址会失效）
+    strictPort: true,
     proxy: {
       '/api': { target: backendUrl, changeOrigin: true },
       '/health': { target: backendUrl, changeOrigin: true },
