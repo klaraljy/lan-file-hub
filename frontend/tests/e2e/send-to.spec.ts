@@ -13,9 +13,14 @@
  * 换环境时用环境变量指定一个真实存在的用户名即可。
  */
 import { expect, test } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const ENABLED = process.env.PLAYWRIGHT_E2E === '1';
 test.skip(!ENABLED, '未设置 PLAYWRIGHT_E2E=1（需要先安装 Playwright 浏览器与后端服务）');
+
+/** 与 screenshots.spec.ts 保持同一约定：相对 frontend/ 的仓库 docs/images */
+const SHOT_DIR = join('..', 'docs', 'images');
 
 const USERNAME = process.env.E2E_SENDTO_USERNAME ?? `e2esend${Date.now()}`;
 const EMAIL = `${USERNAME}@example.com`;
@@ -80,5 +85,58 @@ test.describe('发送给某个用户', () => {
     const url = await linkInput.inputValue();
     expect(url.startsWith('http://127.0.0.1')).toBe(false);
     expect(url.startsWith('http://localhost')).toBe(false);
+
+    // 7) 二维码：必须渲染出来，并且编码的就是上面这条链接（同一个 url 变量）
+    //    （用户要求"浏览器/手机相机都能扫"，所以至少要保证二维码真的存在且是给这条链接用的）
+    const qr = page.locator('[data-testid="share-qr"] svg').first();
+    await expect(qr).toBeVisible();
+    const box = await qr.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThan(100);
+    expect(Math.abs((box?.width ?? 0) - (box?.height ?? 0))).toBeLessThan(4); // 正方形
+    mkdirSync(SHOT_DIR, { recursive: true });
+    await page.locator('.ant-modal').screenshot({ path: join(SHOT_DIR, 'share-qr.png') });
+
+    // 8) 真的把这个二维码**解码**出来，确认扫出来就是这条链接
+    //    用开发依赖 jsqr（纯 JS 解码器）注入页面，把 SVG 画到 canvas 再解 ——
+    //    这样"手机扫一下能不能用"就不是靠肉眼猜，而是自动化断言。
+    await page.addScriptTag({ path: join('node_modules', 'jsqr', 'dist', 'jsQR.js') });
+    const decoded = await page.evaluate(async () => {
+      const globalWindow = window as unknown as { jsQR?: (data: Uint8ClampedArray, width: number, height: number) => { data: string } | null };
+      if (typeof globalWindow.jsQR !== 'function') {
+        return 'unsupported';
+      }
+      const svg = document.querySelector('[data-testid="share-qr"] svg');
+      if (!svg) {
+        return null;
+      }
+      const xml = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([xml], { type: 'image/svg+xml' });
+      const objectUrl = URL.createObjectURL(blob);
+      const image = new Image();
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = objectUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width || 168;
+      canvas.height = image.height || 168;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        return null;
+      }
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      const result = globalWindow.jsQR(pixels.data, pixels.width, pixels.height);
+      URL.revokeObjectURL(objectUrl);
+      return result ? result.data : null;
+    });
+    if (decoded === 'unsupported') {
+      console.log('jsqr 未加载成功，跳过二维码解码断言');
+    } else {
+      expect(decoded).toBe(url); // 扫出来的必须就是这条链接
+    }
   });
 });

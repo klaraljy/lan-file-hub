@@ -12,7 +12,7 @@ import {
   Card,
   Empty,
   Form,
-  Input,
+  Grid,
   InputNumber,
   Modal,
   Popconfirm,
@@ -22,7 +22,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { CopyOutlined, LinkOutlined } from '@ant-design/icons';
+import { LinkOutlined } from '@ant-design/icons';
 
 import {
   SHARE_PERMISSION_LABELS,
@@ -32,6 +32,7 @@ import {
   useShares,
 } from '../features/sharing/useSharing';
 import { buildShareUrl } from '../services/publicUrl';
+import { ShareLinkBox } from './ShareLinkBox';
 import type { FileMeta } from '../types/file';
 import type { Folder } from '../types/folder';
 import type { ShareLink, SharePermission } from '../types/share';
@@ -63,6 +64,9 @@ function shareStatus(link: ShareLink): { text: string; color: string } {
 }
 
 export function ShareDialog({ file, folder, open, onClose }: Props) {
+  // 手机上弹窗占满宽度（手机端适配，2026-09-21）
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.md === false;
   const { message } = AntApp.useApp();
   const resourceId = file?.id ?? folder?.id;
   const resourceName = file?.name ?? folder?.name ?? '';
@@ -124,7 +128,8 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
         </Space>
       }
       footer={null}
-      width={720}
+      width={isMobile ? '100%' : 720}
+      style={isMobile ? { maxWidth: '100vw', top: 8, paddingBottom: 8 } : undefined}
       onCancel={() => {
         // 关闭后明文 Token 不再展示（服务端也没有保存它）
         setCreatedToken(null);
@@ -180,25 +185,11 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
           style={{ marginBottom: 12 }}
           message="链接已创建，明文 Token 只显示这一次"
           description={
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Input
-                readOnly
-                value={createdToken.url}
-                addonAfter={
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={() => void handleCopy(createdToken.url)}
-                  >
-                    复制
-                  </Button>
-                }
-              />
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                关闭弹窗后无法再次查看；需要新链接请重新创建（旧链接可以继续用，也可以在这里撤销）。
-              </Typography.Text>
-            </Space>
+            <ShareLinkBox
+              url={createdToken.url}
+              notice="关闭弹窗后无法再次查看；需要新链接请重新创建（旧链接可以继续用，也可以在这里撤销）。"
+              onCopy={(text) => void handleCopy(text)}
+            />
           }
         />
       )}

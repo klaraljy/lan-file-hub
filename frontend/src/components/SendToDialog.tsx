@@ -12,14 +12,14 @@ import {
   App as AntApp,
   Button,
   Divider,
-  Input,
+  Grid,
   Modal,
   Select,
   Space,
   Spin,
   Typography,
 } from 'antd';
-import { CopyOutlined, LinkOutlined, SendOutlined, UserOutlined } from '@ant-design/icons';
+import { LinkOutlined, SendOutlined, UserOutlined } from '@ant-design/icons';
 
 import {
   PERMISSION_LABELS,
@@ -29,6 +29,7 @@ import {
 } from '../features/sharing/useSharing';
 import { useUserLookup } from '../features/sharing/useUserLookup';
 import { buildShareUrl } from '../services/publicUrl';
+import { ShareLinkBox } from './ShareLinkBox';
 import type { UserLookupItem } from '../services/usersApi';
 import type { PermissionValue } from '../types/share';
 
@@ -45,6 +46,9 @@ const LINK_EXPIRES_SECONDS = 7 * 86400;
 
 export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder }: Props) {
   const { message } = AntApp.useApp();
+  // 手机上弹窗占满宽度（手机端适配，2026-09-21）
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.md === false;
   const [keyword, setKeyword] = useState('');
   const [selected, setSelected] = useState<UserLookupItem | null>(null);
   const [permission, setPermission] = useState<PermissionValue>('READ');
@@ -130,7 +134,8 @@ export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder
         </Space>
       }
       footer={null}
-      width={640}
+      width={isMobile ? '100%' : 640}
+      style={isMobile ? { maxWidth: '100vw', top: 8, paddingBottom: 8 } : undefined}
       onCancel={() => {
         reset();
         onClose();
@@ -216,26 +221,12 @@ export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder
         )}
 
         {link && (
-          <>
-            <Input
-              readOnly
-              value={link.url}
-              addonAfter={
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<CopyOutlined />}
-                  onClick={() => void handleCopy(link.url)}
-                >
-                  复制链接
-                </Button>
-              }
-            />
-            {link.warning && <Alert type="warning" showIcon message={link.warning} />}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              链接只在这里显示这一次；对方打开就能下载。
-            </Typography.Text>
-          </>
+          <ShareLinkBox
+            url={link.url}
+            warning={link.warning}
+            notice="链接只在这里显示这一次；对方打开就能下载。"
+            onCopy={handleCopy}
+          />
         )}
       </Space>
     </Modal>
