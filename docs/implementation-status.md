@@ -1761,3 +1761,26 @@ nginx 反代与 HTTPS、生产安全清单、验证结果）；新增 `deploy/ng
 
 > **未验证**：手机端真的打开页面这一步（需要用户在手机上操作）。本机从局域网 IP 自测只能证明
 > 绑定与代理正确，证明不了手机侧链路与校园网的客户端隔离情况——这正是本轮真机测试要验的东西。
+
+---
+
+## 33. ASan 全量复验（2026-09-18）
+
+§30 新增的端口自检代码之后没在 AddressSanitizer 下跑过，本轮补齐。
+
+| 检查 | 结果 |
+|---|---|
+| `.\scripts\build.ps1 -Preset asan` | 通过 |
+| ASan 单元测试（`-Label unit`，串行） | **160/160 通过**（含新增 6 个 `NetTest.*`） |
+| ASan 集成测试（`-Label integration`，串行） | **133/133 通过** |
+| AddressSanitizer 内存报告 | **无** |
+
+### 33.1 过程中的两个坑
+
+1. **集成测试不能用 `ctest -j 4` 并行跑**：4 个测试进程抢同一个数据库 → **80 个假失败**
+   （全是 `创建根目录失败` 这类数据库层错误，不是内存错误）。串行重跑 **133/133 全过** ✓。
+   已在 `scripts/test.ps1` 注释与 `AGENTS.md` §11 写明「集成测试必须串行」。
+2. **`scripts/test.ps1 -Preset` 原来只接受 `debug|release`**，ASan 只能手工敲
+   `ctest --test-dir build\asan`（而且直接跑 exe 会因缺 ASan 运行时 DLL 报 `0xC0000135`）。
+   已改成支持 `asan`，并新增 `-Label unit|integration`。
+   复验：`.\scripts\test.ps1 -Preset asan -Label unit` → 160/160、退出码 0 ✓

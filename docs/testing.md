@@ -159,6 +159,19 @@
 
 对应的 CMakePresets 至少提供 `debug` / `release` / `asan` / `tsan`。
 
+**本机实际可用的跑法**（2026-09-18 复验）：
+
+```powershell
+.\scripts\build.ps1 -Preset asan              # ASan 构建（独立 triplet x64-windows-asan）
+.\scripts\test.ps1  -Preset asan              # ASan 全量（单元 + 集成）
+.\scripts\test.ps1  -Preset asan -Label unit  # 只跑单元测试（不打库，快）
+```
+
+实测结果：ASan 构建通过，**单元 160/160 + 集成 133/133 全过，无 AddressSanitizer 报告**；
+TSan / UBSan 因 MSVC 不提供、依赖又是 MSVC 静态库而**未验证**（见 README「已知限制」）。
+
+> ⚠️ 集成测试**不要加 `-j`**：并行会抢同一个数据库并产生大批假失败（实测 80 个）。
+
 ### 性能基准
 
 使用 Google Benchmark 测量以下指标：

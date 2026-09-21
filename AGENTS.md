@@ -93,10 +93,11 @@ lan-file-hub/
 
 ```powershell
 # 构建与测试（阶段一创建，CMakePresets 至少提供 debug / release / asan / tsan）
-.\scripts\build.ps1 -Preset debug
-.\scripts\test.ps1  -Preset debug
-.\scripts\format.ps1 -Check          # clang-format
-.\scripts\lint.ps1                   # clang-tidy
+.\scripts\build.ps1 -Preset debug            # 也可 -Preset release / asan
+.\scripts\test.ps1  -Preset debug            # 也可 -Preset release / asan
+.\scripts\test.ps1  -Preset asan -Label unit # 只跑单元测试（不打库，快；ASan 下 160/160）
+.\scripts\format.ps1 -Check                  # clang-format
+.\scripts\lint.ps1                           # clang-tidy
 
 # 前端
 cd frontend; npm ci; npm run dev; npm run test; npm run lint; npx playwright test
@@ -202,6 +203,8 @@ ninja / node / npm / git / docker   已在 PATH
 - 阶段结束时必须执行该阶段任务书里的验收命令，并在报告中给出真实输出。
 - 因环境、依赖、网络或权限跑不起来时，报告必须写明：哪些没跑、为什么、风险是什么。
 - 不得把"命令已启动"说成"验证通过"；不得为了让测试通过而删除或跳过测试。
+- **集成测试必须串行**：`ctest -j N` 并行跑会互相抢同一个数据库，出现大批"创建根目录失败"
+  这类**假失败**（实测 80 个）。串行（ctest 默认）才对。
 
 ## 11.1 Git、GitHub 与 CI（2026-09-12 首次发布时踩到的坑）
 
