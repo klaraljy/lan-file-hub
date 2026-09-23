@@ -11,16 +11,17 @@ import {
 } from '../src/app/navigation';
 
 /**
- * 左侧导航是五个入口，高亮规则必须稳定：
+ * 左侧导航是六个入口（阶段 ⑤ 加了「广场」），高亮规则必须稳定：
  * 目录详情页也要算「我的文件」，前缀相近的路径不能被误判。
  */
 describe('selectedNavKey', () => {
-  it('五个入口本身都能高亮自己', () => {
+  it('六个入口本身都能高亮自己', () => {
     for (const item of MAIN_NAV_ITEMS) {
       expect(selectedNavKey(item.key)).toBe(item.key);
     }
     expect(MAIN_NAV_ITEMS.map((item) => item.key)).toEqual([
       '/files',
+      '/plaza',
       '/recent',
       '/shared',
       '/trash',
@@ -67,6 +68,7 @@ describe('navItemsForRole', () => {
     const items = navItemsForRole('ADMIN');
     expect(items.map((item) => item.key)).toEqual([
       '/files',
+      '/plaza',
       '/recent',
       '/shared',
       '/trash',
@@ -89,16 +91,21 @@ describe('navItemsForRole', () => {
 });
 
 /**
- * 手机底部 Tab（AGENTS.md §15 阶段 ②）：手机上导航的主入口。
- * 「最近文件 / 回收站 / 设置 / 系统管理」都算在「我的」Tab 下。
- * 第 4 个位置留给以后的「广场」，现在只有 3 个。
+ * 手机底部 Tab（AGENTS.md §15 阶段 ②/⑤）：手机上导航的主入口。
+ * 「最近文件 / 回收站 / 设置 / 系统管理」都算在「我的」Tab 下；
+ * 阶段 ⑤ 起多了第 2 个 Tab「广场」（谁在线、直接发文件给他）。
  */
 describe('mobileTabForPath', () => {
-  it('三个 Tab 各自能高亮自己', () => {
-    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(['/files', '/shared', '/me']);
+  it('四个 Tab 各自能高亮自己', () => {
+    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(['/files', '/plaza', '/shared', '/me']);
     for (const tab of MOBILE_TABS) {
       expect(mobileTabForPath(tab.key)).toBe(tab.key);
     }
+  });
+
+  it('广场 Tab 有自己的路径，不会被当成「文件」', () => {
+    expect(mobileTabForPath('/plaza')).toBe('/plaza');
+    expect(mobileTabForPath('/plaza?tab=1')).toBe('/plaza');
   });
 
   it('目录详情页仍算「文件」', () => {

@@ -8,13 +8,19 @@
  * 里加一项即可，这里会自动均分宽度，不需要改布局。
  */
 import type { ReactNode } from 'react';
-import { FolderOutlined, ShareAltOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  FolderOutlined,
+  ShareAltOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { MOBILE_TABS, mobileTabForPath, type MobileTab } from './navigation';
 
 const ICONS: Record<MobileTab['icon'], ReactNode> = {
   folder: <FolderOutlined />,
+  plaza: <TeamOutlined />,
   share: <ShareAltOutlined />,
   user: <UserOutlined />,
 };

@@ -26,6 +26,7 @@ import type { ReactNode } from 'react';
 import { MobileTabBar, TAB_BAR_HEIGHT } from './MobileTabBar';
 import { navItemsForRole, selectedNavKey, type NavItem } from './navigation';
 import { useAuth } from '../features/auth/AuthContext';
+import { usePresenceHeartbeat } from '../features/presence/usePresence';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Header, Sider, Content } = Layout;
@@ -37,6 +38,7 @@ const ICONS: Record<NavItem['icon'], ReactNode> = {
   delete: <DeleteOutlined />,
   setting: <SettingOutlined />,
   admin: <TeamOutlined />,
+  plaza: <TeamOutlined />,
 };
 
 const BRAND = 'lan-file-hub';
@@ -46,6 +48,8 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  // 在线状态心跳：登录后自动开始（每 30 秒），登出后自动停（阶段 ⑤）
+  usePresenceHeartbeat();
 
   async function handleLogout() {
     await logout();

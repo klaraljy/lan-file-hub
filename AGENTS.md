@@ -82,6 +82,9 @@ lan-file-hub/
 │   └── tests/{unit,integration,fixtures}/
 ├── frontend/src/{app,pages,components,features,services,hooks,types}/  frontend/tests/
 ├── migrations/
+├── portable/                    # 便携包（免 Docker / 免 Node，AGENTS §15 ④）：骨架入库，二进制与数据 gitignore
+│   ├── 启动.cmd 停止.cmd 使用说明.txt   # 给用户的入口与大白话说明（GBK，记事本可直接读）
+│   └── app/ pgsql/ redis/ tools/ data/ logs/   # 由 scripts\portable-setup.ps1 生成/下载，不入库
 ├── docs/{brief,architecture,data-model,api,storage,permissions,security,recovery,frontend,testing,deployment,plan}.md
 ├── docs/phases/                 # 阶段任务书
 ├── scripts/                     # PowerShell 脚本：build / test / format / lint / seed
@@ -459,10 +462,10 @@ Git 远程仓库与上传留到项目末尾再做。
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | ① | 登录态下载改**一次性票据 + 浏览器流式落盘**（支持 5 GB） | 2026-09-21 完成 |
-| ② | 手机端按手机设计重做（不是把桌面版压扁） | 待做 |
+| ② | 手机端按手机设计重做（底部 Tab / 悬浮上传 / 底部面板） | 2026-09-21 完成（`a55821c`；只有 Chromium 设备仿真，**未在真机验证**） |
 | ③ | 手机端 App 内置**轻量分享服务**：两机互传、对方扫码即用、≤1 GB、**不做账号体系** | 2026-09-21 完成（`android/`，见 `docs/android.md`；**未在真机验证**） |
-| ④ | **便携包（免 Docker）** + 托盘图标 + 隐藏命令行窗口 + 换掉命令行菜单 | 待做 |
-| ⑤ | **广场/在线用户**（默认在线可见、可在设置隐藏、**可直接点人发文件**）+ 同账号多端互传 | 待做 |
+| ④ | **便携包（免 Docker）** + 托盘图标 + 隐藏命令行窗口 + 换掉命令行菜单 | 2026-09-21 完成（`portable/` + `scripts\tray.ps1` + `scripts\portable-setup.ps1`，见 `docs/portable.md`；**未在别人的电脑上验证**） |
+| ⑤ | **广场/在线用户**（默认在线可见、可在设置隐藏、**可直接点人发文件**）+ 同账号多端互传 | 2026-09-21 完成（前端 + 后端）。在线状态是**进程内存 + 90 秒心跳超时**，不落库、重启即清空；**单机单进程**假设（多实例各记各的）。见 `docs/frontend.md`「广场」 |
 
 ### 15.1 已确认的范围与数字（用户口径，不要再问）
 

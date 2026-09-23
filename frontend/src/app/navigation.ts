@@ -9,11 +9,13 @@ export interface NavItem {
   key: string;
   label: string;
   /** 菜单项对应的图标名，由 AppLayout 映射成组件（这里不引入 React，保持纯数据） */
-  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin';
+  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin' | 'plaza';
 }
 
 export const MAIN_NAV_ITEMS: readonly NavItem[] = [
   { key: '/files', label: '我的文件', icon: 'folder' },
+  // 广场：谁在线、直接发文件给他（阶段 ⑤，用户 2026-09-21 要求）
+  { key: '/plaza', label: '广场', icon: 'plaza' },
   { key: '/recent', label: '最近文件', icon: 'clock' },
   { key: '/shared', label: '分享给我的', icon: 'share' },
   { key: '/trash', label: '回收站', icon: 'delete' },
@@ -59,7 +61,7 @@ export interface MobileTab {
   /** 点这个 Tab 去哪个路径 */
   key: string;
   label: string;
-  icon: 'folder' | 'share' | 'user';
+  icon: 'folder' | 'share' | 'user' | 'plaza';
   /** 哪些路径算在这个 Tab 下（用于高亮）；前缀匹配带斜杠边界 */
   matches: readonly string[];
 }
@@ -69,12 +71,11 @@ export interface MobileTab {
  *
  * 「最近文件 / 回收站 / 设置 / 系统管理 / 退出登录」都收进「我的」页，
  * 顶栏因此不再需要汉堡菜单——这也是用户反馈"憋屈"的主要来源。
- *
- * ⚠️ 第 4 个位置**留给以后的「广场」**（AGENTS.md §15 阶段 ⑤）：
- * 届时在下面这个数组里追加一项即可，布局不用改（Tab 栏自动均分）。
  */
 export const MOBILE_TABS: readonly MobileTab[] = [
   { key: '/files', label: '文件', icon: 'folder', matches: ['/files'] },
+  // 广场（阶段 ⑤）：谁在线、直接发文件给他
+  { key: '/plaza', label: '广场', icon: 'plaza', matches: ['/plaza'] },
   { key: '/shared', label: '分享给我的', icon: 'share', matches: ['/shared'] },
   {
     key: '/me',

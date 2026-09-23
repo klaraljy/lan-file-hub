@@ -1,17 +1,36 @@
 /**
  * 个人设置页（docs/frontend.md §2.2 左侧导航第 5 项）。
  *
- * 当前只做「只读的账号与存储信息」：用户名、邮箱、角色、状态、配额与已用空间。
+ * 当前做两件事：
+ *   1. 只读的账号与存储信息（用户名、邮箱、角色、状态、配额与已用空间）；
+ *   2. **在线可见性开关**（阶段 ⑤ 广场）：默认可见，关掉后别人在广场看不到我。
  * 改密码、改邮箱等写操作需要后端提供对应接口，属于后续阶段，这里明确标注而不是
  * 放一个点了没反应的按钮。
  */
-import { Card, Descriptions, Progress, Space, Tag, Typography } from 'antd';
+import { App as AntApp, Card, Descriptions, Progress, Space, Switch, Tag, Typography } from 'antd';
+import { useMutation } from '@tanstack/react-query';
 
 import { formatBytes } from '../features/files/listView';
 import { useAuth } from '../features/auth/AuthContext';
+import { usePresenceHeartbeat } from '../features/presence/usePresence';
+import { presenceApi } from '../services/presenceApi';
 
 export function SettingsPage() {
   const { user } = useAuth();
+  const { message } = AntApp.useApp();
+  const presence = usePresenceHeartbeat();
+
+  // 默认可见（用户要求"只要在线就默认显示"）；服务端返回的就是当前值
+  const visible = presence.data?.visible ?? true;
+
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => presenceApi.setVisible(next),
+    onSuccess: async (next) => {
+      message.success(next ? '别人现在能在广场看到你在线' : '已隐藏：别人在广场看不到你在线');
+      await presence.refetch();
+    },
+    onError: () => message.error('设置失败，请稍后重试'),
+  });
 
   if (!user) {
     // 外壳已经保证进入这里是登录态，这里只是防御性兜底
@@ -53,6 +72,25 @@ export function SettingsPage() {
           />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             回收站中的文件仍占用空间；历史版本也计入用量（永久删除或超过保留期后才会释放）。
+          </Typography.Text>
+        </Space>
+      </Card>
+
+      <Card title="广场与隐私">
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Space size={12} wrap>
+            <Switch
+              checked={visible}
+              loading={toggle.isPending}
+              onChange={(next) => toggle.mutate(next)}
+            />
+            <Typography.Text>
+              {visible ? '让别人看到我在线' : '隐藏我的在线状态'}
+            </Typography.Text>
+          </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            开着的效果：同一网络里的同事打开「广场」就能看到你在线，并可以直接把文件发给你。
+            关掉后别人看不到你，但你自己仍然能看到自己的设备；你随时可以再打开。
           </Typography.Text>
         </Space>
       </Card>
