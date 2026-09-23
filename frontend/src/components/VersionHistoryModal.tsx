@@ -5,7 +5,7 @@
  * 也可以恢复到某个版本——**恢复会追加一个新版本，不会删除任何历史**，
  * 所以破坏性操作只需要二次确认，不会造成数据丢失。
  */
-import { App as AntApp, Button, Empty, List, Modal, Popconfirm, Space, Spin, Tag, Typography } from 'antd';
+import { App as AntApp, Button, Empty, List, Popconfirm, Space, Spin, Tag, Typography } from 'antd';
 import { DownloadOutlined, HistoryOutlined, RollbackOutlined } from '@ant-design/icons';
 
 import {
@@ -15,6 +15,7 @@ import {
   useRestoreVersion,
   versionErrorMessage,
 } from '../features/versions/useVersions';
+import { ResponsiveSheet } from './ResponsiveSheet';
 import type { FileMeta } from '../types/file';
 import type { FileVersion } from '../types/version';
 
@@ -76,18 +77,16 @@ export function VersionHistoryModal({ file, open, onClose, onUpdated }: Props) {
   const items = versions.data?.items ?? [];
 
   return (
-    <Modal
+    <ResponsiveSheet
       open={open}
+      desktopWidth={720}
       title={
         <Space>
           <HistoryOutlined />
           <span>版本历史{file ? `：${file.name}` : ''}</span>
         </Space>
       }
-      footer={null}
-      width={720}
-      onCancel={onClose}
-      destroyOnClose
+      onClose={onClose}
     >
       {versions.isLoading && <Spin />}
       {versions.error && (
@@ -158,6 +157,6 @@ export function VersionHistoryModal({ file, open, onClose, onUpdated }: Props) {
           )}
         />
       )}
-    </Modal>
+    </ResponsiveSheet>
   );
 }

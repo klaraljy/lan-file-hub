@@ -12,9 +12,7 @@ import {
   Card,
   Empty,
   Form,
-  Grid,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -32,6 +30,7 @@ import {
   useShares,
 } from '../features/sharing/useSharing';
 import { buildShareUrl } from '../services/publicUrl';
+import { ResponsiveSheet } from './ResponsiveSheet';
 import { ShareLinkBox } from './ShareLinkBox';
 import type { FileMeta } from '../types/file';
 import type { Folder } from '../types/folder';
@@ -64,9 +63,6 @@ function shareStatus(link: ShareLink): { text: string; color: string } {
 }
 
 export function ShareDialog({ file, folder, open, onClose }: Props) {
-  // 手机上弹窗占满宽度（手机端适配，2026-09-21）
-  const screens = Grid.useBreakpoint();
-  const isMobile = screens.md === false;
   const { message } = AntApp.useApp();
   const resourceId = file?.id ?? folder?.id;
   const resourceName = file?.name ?? folder?.name ?? '';
@@ -119,23 +115,20 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
   const items = shares.data?.items ?? [];
 
   return (
-    <Modal
+    <ResponsiveSheet
       open={open}
+      desktopWidth={720}
       title={
         <Space>
           <LinkOutlined />
           <span>分享{isFolder ? '文件夹' : '文件'}：{resourceName}</span>
         </Space>
       }
-      footer={null}
-      width={isMobile ? '100%' : 720}
-      style={isMobile ? { maxWidth: '100vw', top: 8, paddingBottom: 8 } : undefined}
-      onCancel={() => {
+      onClose={() => {
         // 关闭后明文 Token 不再展示（服务端也没有保存它）
         setCreatedToken(null);
         onClose();
       }}
-      destroyOnClose
     >
       <Form
         form={form}
@@ -235,6 +228,6 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
           </Card>
         );
       })}
-    </Modal>
+    </ResponsiveSheet>
   );
 }

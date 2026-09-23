@@ -4,7 +4,7 @@
  * 只有资源所有者（或管理员）能打开并修改；前端用有效权限决定是否展示入口，
  * **真正的判定在后端**（docs/permissions.md §2）。
  */
-import { App as AntApp, Alert, Button, Form, Input, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { App as AntApp, Alert, Button, Form, Input, Popconfirm, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
@@ -14,6 +14,7 @@ import {
   usePermissions,
   useRevokePermission,
 } from '../features/sharing/useSharing';
+import { ResponsiveSheet } from './ResponsiveSheet';
 import type { FileMeta } from '../types/file';
 import type { Folder } from '../types/folder';
 import type { PermissionGrant, PermissionValue } from '../types/share';
@@ -122,13 +123,11 @@ export function PermissionDialog({ file, folder, open, onClose }: Props) {
   ];
 
   return (
-    <Modal
+    <ResponsiveSheet
       open={open}
+      desktopWidth={720}
       title={`权限管理：${resourceName}`}
-      footer={null}
-      width={720}
-      onCancel={onClose}
-      destroyOnClose
+      onClose={onClose}
     >
       <Alert
         type="info"
@@ -179,6 +178,6 @@ export function PermissionDialog({ file, folder, open, onClose }: Props) {
           locale={{ emptyText: '还没有对其他用户授权（所有者自带全部权限）' }}
         />
       )}
-    </Modal>
+    </ResponsiveSheet>
   );
 }

@@ -1,24 +1,21 @@
 /**
  * 应用外壳（docs/frontend.md §2.2）。
  *
- * 职责：导航（我的文件 / 最近文件 / 分享给我的 / 回收站 / 设置）+ 顶部用户信息条，
- * 中间用 <Outlet/> 渲染具体页面。
+ * 桌面端（≥ lg / 992px）：左侧导航常驻 + 顶栏用户信息 —— 与改造前一致，功能不变。
  *
- * 手机适配（AGENTS.md §14.1：手机上难用 = 产品缺陷）：
- *   - 窄屏（< lg / 992px）不再渲染左侧栏，导航收进 **抽屉**，由顶部的**汉堡按钮**打开；
- *   - 点某个导航项后**自动关闭**抽屉，不用手动再点一次；
- *   - 顶部用户区精简为「用户名 + 角色标签 + 退出登录」，用户名过长省略号，不撑爆一行。
+ * 手机端（< lg）：导航主入口是**底部 Tab 栏**（AGENTS.md §15 阶段 ②，用户要求"像一个 App"）：
+ *   - 顶栏只留品牌与当前用户，不再用汉堡菜单当主入口（那是"憋屈"的主要来源）；
+ *   - 「最近文件 / 回收站 / 设置 / 系统管理 / 退出登录」都收进「我的」页；
+ *   - 内容区底部按 Tab 栏高度留白，最后一条不会被挡住。
  *
  * 页面自己不再画标题栏与退出按钮——那些属于外壳，避免每个页面各写一套。
- * 导航高亮规则在 app/navigation.ts 里（纯函数，可单测）。
+ * 导航高亮规则在 app/navigation.ts 里（纯函数，可单测；底部 Tab 的高亮用 mobileTabForPath）。
  */
-import { useEffect, useState } from 'react';
-import { Button, Drawer, Layout, Menu, Space, Tag, Typography } from 'antd';
+import { Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
   ClockCircleOutlined,
   DeleteOutlined,
   FolderOutlined,
-  MenuOutlined,
   SettingOutlined,
   ShareAltOutlined,
   TeamOutlined,
@@ -26,9 +23,10 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
+import { MobileTabBar, TAB_BAR_HEIGHT } from './MobileTabBar';
 import { navItemsForRole, selectedNavKey, type NavItem } from './navigation';
 import { useAuth } from '../features/auth/AuthContext';
-import { TOUCH_HEIGHT, useIsMobile } from '../hooks/useIsMobile';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Header, Sider, Content } = Layout;
 
@@ -48,12 +46,6 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [navOpen, setNavOpen] = useState(false);
-
-  // 手机：切换路由后自动收起抽屉（点了导航项就该看到内容，而不是还要再点一次关闭）
-  useEffect(() => {
-    setNavOpen(false);
-  }, [location.pathname]);
 
   async function handleLogout() {
     await logout();
@@ -64,8 +56,6 @@ export function AppLayout() {
     <Menu
       mode="inline"
       selectedKeys={[selectedNavKey(location.pathname)]}
-      // 手机上点完就关；桌面端 Sider 常驻，这个回调没有副作用
-      onClick={() => setNavOpen(false)}
       items={navItemsForRole(user?.role).map((item) => ({
         key: item.key,
         icon: ICONS[item.icon],
@@ -99,33 +89,24 @@ export function AppLayout() {
             background: '#fff',
             display: 'flex',
             alignItems: 'center',
-            // 手机上左边放汉堡按钮，右边是用户信息
             justifyContent: isMobile ? 'space-between' : 'flex-end',
             paddingInline: isMobile ? 12 : 24,
             gap: 8,
+            // 手机顶栏收窄一点，把高度还给内容
+            height: isMobile ? 52 : undefined,
+            lineHeight: 'normal',
           }}
         >
-          {isMobile && (
-            <Space size={4}>
-              <Button
-                type="text"
-                aria-label="打开导航菜单"
-                icon={<MenuOutlined style={{ fontSize: 18 }} />}
-                style={{ height: TOUCH_HEIGHT, minWidth: TOUCH_HEIGHT }}
-                onClick={() => setNavOpen(true)}
-              />
-              <Typography.Text strong>{BRAND}</Typography.Text>
-            </Space>
-          )}
+          {isMobile && <Typography.Text strong>{BRAND}</Typography.Text>}
 
           {/* lineHeight 归零：否则整组继承 AntD Header 的 64px 行高，
-             加上 ellipsis 自带的 vertical-align:bottom，用户名会被顶到顶栏底部（实测踩到） */}
+              加上 ellipsis 自带的 vertical-align:bottom，用户名会被顶到顶栏底部（实测踩到） */}
           <Space size={isMobile ? 6 : 12} style={{ minWidth: 0, lineHeight: 'normal' }}>
             <Typography.Text
               type="secondary"
               ellipsis
               style={{
-                maxWidth: isMobile ? 88 : 200,
+                maxWidth: isMobile ? 120 : 200,
                 lineHeight: 'normal',
                 verticalAlign: 'middle',
               }}
@@ -137,33 +118,29 @@ export function AppLayout() {
                 {user.role === 'ADMIN' ? '管理员' : '普通用户'}
               </Tag>
             )}
-            <Typography.Link onClick={() => void handleLogout()} style={{ whiteSpace: 'nowrap' }}>
-              退出登录
-            </Typography.Link>
+            {/* 桌面端保留顶栏退出；手机端退出登录在「我的」页里，不占顶栏 */}
+            {!isMobile && (
+              <Typography.Link onClick={() => void handleLogout()} style={{ whiteSpace: 'nowrap' }}>
+                退出登录
+              </Typography.Link>
+            )}
           </Space>
         </Header>
 
-        <Content style={{ padding: isMobile ? 12 : 24 }}>
+        <Content
+          style={{
+            padding: isMobile ? 12 : 24,
+            // 底部 Tab 栏是 fixed 的，内容要留出它的高度
+            paddingBottom: isMobile ? TAB_BAR_HEIGHT + 20 : 24,
+          }}
+        >
           <div style={{ maxWidth: 1200, margin: '0 auto' }}>
             <Outlet />
           </div>
         </Content>
       </Layout>
 
-      {/* 手机导航抽屉：同一份菜单，避免两处维护 */}
-      {isMobile && (
-        <Drawer
-          open={navOpen}
-          placement="left"
-          width={240}
-          title={BRAND}
-          onClose={() => setNavOpen(false)}
-          styles={{ body: { padding: 0 } }}
-          destroyOnClose
-        >
-          {menu}
-        </Drawer>
-      )}
+      {isMobile && <MobileTabBar />}
     </Layout>
   );
 }

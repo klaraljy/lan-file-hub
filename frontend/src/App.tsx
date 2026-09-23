@@ -7,6 +7,7 @@ import { AdminPage } from './pages/AdminPage';
 import { useAuth } from './features/auth/AuthContext';
 import { FilesPage } from './pages/FilesPage';
 import { LoginPage } from './pages/LoginPage';
+import { MyPage } from './pages/MyPage';
 import { PublicSharePage } from './pages/PublicSharePage';
 import { RecentPage } from './pages/RecentPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -79,6 +80,8 @@ export default function App() {
       >
         <Route path="/files" element={<FilesPage />} />
         <Route path="/files/:folderId" element={<FilesPage />} />
+        {/* 手机底部 Tab 的第三个入口：最近文件/回收站/设置/退出登录都收在这里 */}
+        <Route path="/me" element={<MyPage />} />
         <Route path="/recent" element={<RecentPage />} />
         <Route path="/shared" element={<SharedWithMePage />} />
         <Route path="/trash" element={<TrashPage />} />

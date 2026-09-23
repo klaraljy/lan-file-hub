@@ -355,9 +355,10 @@ QUOTA_EXCEEDED
 红线：页面不展示密码、密码哈希、Token 或敏感配置（后端返回的对象里本来就没有）。
 前端的入口隐藏与 403 结果页都只是界面行为——权限一律由后端判定。
 
-## 8. 手机端适配（2026-09-21，用户明确指示）
+## 8. 手机端（2026-09-21，用户明确指示；阶段 ② 已按"像 App"重做）
 
-用户原话：「手机端界面适配：仍然是桌面版布局，手机上能用但挤。**修改，我用的非常的憋屈**」。
+用户原话：「手机端界面适配：仍然是桌面版布局，手机上能用但挤。**修改，我用的非常的憋屈**」；
+第二次反馈：「这个手机端网页的适配非常的粗糙，感觉根本就没有设计」。
 按 [AGENTS.md](../AGENTS.md) §14.1，手机上难用属于**产品缺陷**，因此这不是可选优化。
 
 **判定**：`frontend/src/hooks/useIsMobile.ts` 统一给出「窄屏」= AntD `lg`（992px）以下。
@@ -365,15 +366,28 @@ QUOTA_EXCEEDED
 直接取反会让桌面端先闪一帧手机布局；阈值也只在那一处定义。触控最小高度用同一个文件的
 `TOUCH_HEIGHT`（44px），不要在组件里各写一个数字。
 
+### 8.1 手机上长什么样（阶段 ② 的结果）
+
 | 区域 | 手机上的行为 |
 |---|---|
-| 应用外壳 `app/AppLayout.tsx` | 不渲染左侧栏；导航收进**抽屉**，顶部**汉堡按钮**打开，点导航项**自动关闭**；顶栏精简为「用户名（省略号）+ 角色标签 + 退出登录」，且整组 `line-height: normal`（否则会继承 Header 的 64px 行高，被 `ellipsis` 的 `vertical-align: bottom` 顶到顶栏底部——实测踩到） |
-| 文件页 `pages/FilesPage.tsx` | 列表视图改用 **卡片列表**（`components/FileCardList.tsx`）：名称 + 大小/类型/时间 + 一行操作；工具栏换成可换行 flex，搜索框独占一行 |
-| 卡片 `components/FileCardList.tsx` | **「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认 |
+| 应用外壳 `app/AppLayout.tsx` | **底部 Tab 栏是导航主入口**（不再用汉堡菜单）；顶栏只留品牌 + 用户名 + 角色标签；内容区底部按 Tab 栏高度留白（`TAB_BAR_HEIGHT + 20`） |
+| 底部 Tab `app/MobileTabBar.tsx` | `文件 / 分享给我的 / 我的` 三个 Tab，每个 1/3 宽、56px 高；**第 4 个位置留给以后的「广场」**（往 `navigation.ts` 的 `MOBILE_TABS` 加一项即可，布局自动均分）；按钮显式给 `aria-label`，否则可访问名会带上图标的 `aria-label`（如 "folder 文件"） |
+| 「我的」页 `pages/MyPage.tsx` | 最近文件 / 回收站 / 设置（管理员多一项系统管理）+ 退出登录；一行一个、≥60px、整行可点 |
+| 文件页 `pages/FilesPage.tsx` | 列表视图用**卡片列表**；**搜索框固定在顶部**（滚动时也随时能过滤）；工具栏换行排布 |
+| 卡片 `components/FileCardList.tsx` | **整张卡可点**（文件夹进入、文件看详情，右侧有 `>` 提示）；名字 16px；**「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认；容器底部留 88px，最后一张不会被悬浮条挡住 |
+| 上传 `components/UploadPanel.tsx` | **首屏不再有上传区**：没任务时是右下角**悬浮「上传」按钮**；有任务时是**悬浮进度条**（文件名 + 进度 + 取消 + 添加 + 全部）；全部结束后收成一条「上传完成 N 个 / 继续上传 / 查看 / ×」；点「全部」用底部面板列任务（暂停/继续/取消/移除） |
+| 弹层 `components/ResponsiveSheet.tsx` | 手机上一律**从底部滑出**（AntD `Drawer placement="bottom"`，高度 90%）；桌面端仍是居中 Modal。发送给… / 分享 / 权限 / 版本历史 / 新建与重命名文件夹 都走它 —— 只写一份内容，避免"手机版漏改一个" |
 | 网格 `components/FileGrid.tsx` | 列数自适应（手机 1 列 / 窄屏 2 列 / 宽屏更多）；图标按钮在手机上放大到 44px |
 | 详情 `components/FileDetailDrawer.tsx` | 宽度占满（`width="100%"`），操作按钮纵向排列、整行可点 |
-| 上传 `components/UploadPanel.tsx` | 任务行可换行：文件名省略号、状态与按钮整组换行，按钮在手机上放大 |
 
-验收：`frontend/tests/e2e/mobile.spec.ts`（Pixel 7 真机视口）覆盖
-「汉堡开抽屉 → 点导航自动关 → 上传 → 卡片列表 → 「发送给…」可见 → 无横向滚动」，
-并在 **360 / 430px** 两种宽度复验不溢出；截图见 `docs/images/mobile-files.png`、`mobile-nav.png`。
+⛔ 不要绕开 `ResponsiveSheet` 直接给弹窗写手机分支；也不要绕开 `ShareLinkBox`
+（分享链接必须带二维码，AGENTS.md §14.4）。
+
+### 8.2 验收
+
+`frontend/tests/e2e/mobile.spec.ts`（Pixel 7 真机视口：412×915、isMobile、hasTouch）覆盖
+「底部三个 Tab 可见可点 → 切到分享给我的再切回 → 我的页四件套 → 悬浮上传 → 卡片里「发送给…」是主按钮
+→ 点开是底部滑出面板 → **面板层级高于底部 Tab** → 无横向滚动」，并在 **360 / 430px** 复验不溢出。
+
+截图（均为真机视口实拍）：`docs/images/mobile-files.png`（卡片 + 悬浮上传 + 底部 Tab）、
+`docs/images/mobile-my.png`（我的页）、`docs/images/mobile-sheet.png`（发送给…底部面板）。

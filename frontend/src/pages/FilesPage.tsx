@@ -19,7 +19,6 @@ import {
   Empty,
   Form,
   Input,
-  Modal,
   Popconfirm,
   Segmented,
   Space,
@@ -53,6 +52,7 @@ import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileGrid } from '../components/FileGrid';
 import { FolderBreadcrumb } from '../components/FolderBreadcrumb';
 import { PermissionDialog } from '../components/PermissionDialog';
+import { ResponsiveSheet } from '../components/ResponsiveSheet';
 import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { UploadPanel } from '../components/UploadPanel';
@@ -401,11 +401,30 @@ export function FilesPage() {
     },
   ];
 
+  // 过滤当前页：真正的服务端搜索属于后续阶段（见文件头说明）。
+  // 手机上它固定在顶部（滚动时也能随时过滤），桌面端留在工具栏里。
+  const searchBox = (
+    <Input.Search
+      allowClear
+      placeholder="在当前页中按名称过滤"
+      style={{ width: isMobile ? '100%' : 240 }}
+      value={keyword}
+      onChange={(event) => setKeyword(event.target.value)}
+    />
+  );
+
   return (
     <Card>
       <FolderBreadcrumb chain={chain} />
 
-      {/* 工具栏：手机上换行排布，搜索框独占一行，避免撑出横向滚动 */}
+      {/* 手机：搜索固定在顶部 */}
+      {isMobile && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 6, background: '#fff', paddingBottom: 8 }}>
+          {searchBox}
+        </div>
+      )}
+
+      {/* 工具栏：手机上换行排布，避免撑出横向滚动 */}
       <div
         style={{
           display: 'flex',
@@ -415,6 +434,7 @@ export function FilesPage() {
           marginBottom: 12,
         }}
       >
+        {!isMobile && searchBox}
         <Button icon={<PlusOutlined />} onClick={openCreate} disabled={!currentId}>
           新建文件夹
         </Button>
@@ -428,15 +448,6 @@ export function FilesPage() {
         >
           刷新
         </Button>
-
-        {/* 过滤当前页：真正的服务端搜索属于后续阶段（见文件头说明） */}
-        <Input.Search
-          allowClear
-          placeholder="在当前页中按名称过滤"
-          style={{ width: isMobile ? '100%' : 240 }}
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-        />
 
         <Dropdown
           menu={{
@@ -618,15 +629,27 @@ export function FilesPage() {
         isFolder={Boolean(sendTarget?.folder)}
       />
 
-      <Modal
+      <ResponsiveSheet
         open={editor !== null}
+        desktopWidth={480}
         title={editor?.kind === 'rename' ? '重命名文件夹' : '新建文件夹'}
-        okText={editor?.kind === 'rename' ? '重命名' : '创建'}
-        cancelText="取消"
-        confirmLoading={createMutation.isPending || renameMutation.isPending}
-        onOk={() => void submitEditor()}
-        onCancel={() => setEditor(null)}
-        destroyOnClose
+        onClose={() => setEditor(null)}
+        footer={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button block size="large" onClick={() => setEditor(null)}>
+              取消
+            </Button>
+            <Button
+              block
+              size="large"
+              type="primary"
+              loading={createMutation.isPending || renameMutation.isPending}
+              onClick={() => void submitEditor()}
+            >
+              {editor?.kind === 'rename' ? '重命名' : '创建'}
+            </Button>
+          </div>
+        }
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
@@ -654,7 +677,7 @@ export function FilesPage() {
             <Input autoFocus placeholder="例如：项目文档" onPressEnter={() => void submitEditor()} />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveSheet>
     </Card>
   );
 }

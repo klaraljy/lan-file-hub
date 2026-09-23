@@ -12,8 +12,6 @@ import {
   App as AntApp,
   Button,
   Divider,
-  Grid,
-  Modal,
   Select,
   Space,
   Spin,
@@ -29,6 +27,7 @@ import {
 } from '../features/sharing/useSharing';
 import { useUserLookup } from '../features/sharing/useUserLookup';
 import { buildShareUrl } from '../services/publicUrl';
+import { ResponsiveSheet } from './ResponsiveSheet';
 import { ShareLinkBox } from './ShareLinkBox';
 import type { UserLookupItem } from '../services/usersApi';
 import type { PermissionValue } from '../types/share';
@@ -46,9 +45,6 @@ const LINK_EXPIRES_SECONDS = 7 * 86400;
 
 export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder }: Props) {
   const { message } = AntApp.useApp();
-  // 手机上弹窗占满宽度（手机端适配，2026-09-21）
-  const screens = Grid.useBreakpoint();
-  const isMobile = screens.md === false;
   const [keyword, setKeyword] = useState('');
   const [selected, setSelected] = useState<UserLookupItem | null>(null);
   const [permission, setPermission] = useState<PermissionValue>('READ');
@@ -125,22 +121,19 @@ export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder
   }
 
   return (
-    <Modal
+    <ResponsiveSheet
       open={open}
+      desktopWidth={640}
       title={
         <Space>
           <SendOutlined />
           <span>发送给…</span>
         </Space>
       }
-      footer={null}
-      width={isMobile ? '100%' : 640}
-      style={isMobile ? { maxWidth: '100vw', top: 8, paddingBottom: 8 } : undefined}
-      onCancel={() => {
+      onClose={() => {
         reset();
         onClose();
       }}
-      destroyOnClose
     >
       <Alert
         type="info"
@@ -229,6 +222,6 @@ export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder
           />
         )}
       </Space>
-    </Modal>
+    </ResponsiveSheet>
   );
 }

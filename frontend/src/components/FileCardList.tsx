@@ -20,6 +20,7 @@ import {
   HistoryOutlined,
   InfoCircleOutlined,
   MoreOutlined,
+  RightOutlined,
   SendOutlined,
   ShareAltOutlined,
   TeamOutlined,
@@ -59,7 +60,10 @@ export function FileCardList({
 
   if (rows.length === 0) {
     return (
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这个文件夹是空的，点击「上传文件」开始" />
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="这个文件夹是空的，点右下角「上传」开始"
+      />
     );
   }
 
@@ -114,11 +118,19 @@ export function FileCardList({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    // paddingBottom：给底部的悬浮上传条留位置，最后一张卡不会被挡住
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 88 }}>
       {rows.map((row) => (
-        <Card key={row.key} size="small" styles={{ body: { padding: 12 } }}>
+        <Card
+          key={row.key}
+          size="small"
+          hoverable
+          styles={{ body: { padding: 12 } }}
+          // 整张卡可点：文件夹进去、文件看详情（手机上比点小图标容易得多）
+          onClick={() => (row.kind === 'folder' ? onOpenFolder(row) : onDetail(row))}
+        >
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 22, lineHeight: '28px' }}>
+            <span style={{ fontSize: 24, lineHeight: '30px' }}>
               {row.kind === 'folder' ? (
                 <FolderOutlined style={{ color: '#faad14' }} />
               ) : (
@@ -129,8 +141,7 @@ export function FileCardList({
               <Typography.Text
                 strong
                 ellipsis={{ tooltip: row.name }}
-                style={{ display: 'block' }}
-                onClick={() => (row.kind === 'folder' ? onOpenFolder(row) : onDetail(row))}
+                style={{ display: 'block', fontSize: 16 }}
               >
                 {row.name}
               </Typography.Text>
@@ -142,9 +153,14 @@ export function FileCardList({
                 {new Date(row.updated_at).toLocaleString()}
               </Typography.Text>
             </div>
+            <RightOutlined style={{ color: '#bfbfbf', fontSize: 12, marginTop: 4 }} />
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+          {/* 操作区：点按钮不应该同时触发"打开卡片"，所以这里阻止冒泡 */}
+          <div
+            style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}
+            onClick={(event) => event.stopPropagation()}
+          >
             {/* 主操作：按人发送（AGENTS.md §14.3）。手机上必须是显眼的大按钮 */}
             <Button
               type="primary"

@@ -1,9 +1,13 @@
 /**
- * 手机端界面适配的端到端验证（AGENTS.md §14.1：手机上"憋屈" = 产品缺陷）。
+ * 手机端界面（阶段 ②：手机要像一个 App，而不是把桌面版压扁）的端到端验证。
  *
- * 用 Playwright 的**真机设备描述**（Pixel 7：412×915、isMobile、hasTouch）跑完整路径：
- *   注册 → 我的文件 → 上传 → 卡片列表 → 「发送给…」→ 导航抽屉 → 无横向滚动，
- * 并把手机版首页截图存到 docs/images/mobile-files.png 供人工确认。
+ * 用户原话："这个手机端网页的适配非常的粗糙，感觉根本就没有设计"、"我用的非常的憋屈"。
+ * 所以这里按**真实手机视口**（Pixel 7：412×915、isMobile、hasTouch）钉住：
+ *   ① 底部三个 Tab（文件 / 分享给我的 / 我的）可见可点，且切换正常；
+ *   ② 「我的」页里有最近文件 / 回收站 / 设置 / 退出登录；
+ *   ③ 上传入口是右下角悬浮按钮（首屏不再被上传区占满）；
+ *   ④ 文件卡片里「发送给…」仍是显眼主按钮，点开是**底部滑出面板**；
+ *   ⑤ 全程没有横向滚动（360 / 430px 也复验）。
  *
  * 执行（服务需已在运行：后端 9080、前端 5173）：
  *   cd frontend
@@ -39,7 +43,7 @@ test.beforeAll(() => {
   mkdirSync(SHOT_DIR, { recursive: true });
 });
 
-test('手机端：导航抽屉 / 卡片列表 / 发送给… / 没有横向滚动', async ({ page }) => {
+test('手机端：底部 Tab / 我的页 / 悬浮上传 / 发送给…底部面板 / 不横向滚动', async ({ page }) => {
   // 1) 注册一个全新用户（避免与既有数据冲突）
   await page.goto('/register');
   await page.getByLabel('用户名').fill(USERNAME);
@@ -49,57 +53,84 @@ test('手机端：导航抽屉 / 卡片列表 / 发送给… / 没有横向滚�
   await page.getByRole('button', { name: buttonName('注册') }).click();
   await expect(page).toHaveURL(/\/files/);
 
-  // 2) ① 汉堡按钮可见，点开后导航可见；点导航项应**自动关闭**抽屉
-  const hamburger = page.getByRole('button', { name: '打开导航菜单' });
-  await expect(hamburger).toBeVisible();
-  await hamburger.click();
-  await expect(page.getByRole('menuitem', { name: '分享给我的' })).toBeVisible();
-  // 截图：手机版导航抽屉
-  await page.addStyleTag({ content: '*{transition:none !important;animation:none !important}' });
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: join(SHOT_DIR, 'mobile-nav.png'), fullPage: false });
-  await page.getByRole('menuitem', { name: '回收站' }).click();
-  await expect(page).toHaveURL(/\/trash/);
-  await expect(page.getByRole('menuitem', { name: '分享给我的' })).toBeHidden();
+  // 2) ① 底部三个 Tab 都可见；② 切换 Tab 正常
+  const filesTab = page.getByRole('button', { name: '文件', exact: true });
+  const sharedTab = page.getByRole('button', { name: '分享给我的', exact: true });
+  const meTab = page.getByRole('button', { name: '我的', exact: true });
+  await expect(filesTab).toBeVisible();
+  await expect(sharedTab).toBeVisible();
+  await expect(meTab).toBeVisible();
 
-  // 回到「我的文件」
-  await hamburger.click();
-  await page.getByRole('menuitem', { name: '我的文件' }).click();
+  await sharedTab.click();
+  await expect(page).toHaveURL(/\/shared/);
+  await filesTab.click();
   await expect(page).toHaveURL(/\/files/);
 
-  // 3) 上传一个文件（手机路径里必须能上传）
-  await page.setInputFiles('.ant-upload input[type="file"]', {
+  // 3) 「我的」页：最近文件 / 回收站 / 设置 / 退出登录 都在这里
+  await meTab.click();
+  await expect(page).toHaveURL(/\/me/);
+  await expect(page.getByText('最近文件')).toBeVisible();
+  await expect(page.getByText('回收站')).toBeVisible();
+  await expect(page.getByText('设置')).toBeVisible();
+  await expect(page.getByRole('button', { name: buttonName('退出登录') })).toBeVisible();
+  await page.screenshot({ path: join(SHOT_DIR, 'mobile-my.png'), fullPage: false });
+
+  // 回到「文件」
+  await filesTab.click();
+  await expect(page).toHaveURL(/\/files/);
+
+  // 4) ③ 上传入口是右下角悬浮按钮；选文件后走同一套上传逻辑（隐藏 input）
+  const uploadButton = page.getByRole('button', { name: buttonName('上传') });
+  await expect(uploadButton).toBeVisible();
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: SAMPLE_NAME,
     mimeType: 'text/plain',
     buffer: Buffer.from('mobile e2e\n', 'utf-8'),
   });
-
-  // ② 卡片列表里能看到文件（手机上是卡片而不是宽表格）
   await expect(page.getByText(SAMPLE_NAME).first()).toBeVisible({ timeout: 30_000 });
-  // ③ 「发送给…」必须是显眼的主按钮（AGENTS.md §14.3）
+
+  // 5) ④ 文件卡片里「发送给…」是显眼主按钮（AGENTS.md §14.3）
   const sendButton = page.getByRole('button', { name: /发送给/ }).first();
   await expect(sendButton).toBeVisible();
+  await expect(sendButton).toHaveClass(/ant-btn-primary/);
 
-  // ④ 没有横向滚动
+  // 6) ⑤ 没有横向滚动
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-
-  // 截图：手机版「我的文件」（回到顶部，让顶栏完整入镜），供人工确认排版
-  await page.addStyleTag({ content: '*{transition:none !important;animation:none !important}' });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(300);
   await page.screenshot({ path: join(SHOT_DIR, 'mobile-files.png'), fullPage: false });
 
-  // 4) 「发送给…」弹窗在手机宽度下也要能用，且不产生横向滚动
+  // 7) 「发送给…」在手机上是从底部滑出的面板（阶段 ② 的硬要求），内容仍完整
   await sendButton.click();
+  await expect(page.locator('.ant-drawer-content')).toBeVisible();
   await expect(page.getByText('对方登录后，在左侧「分享给我的」里就能看到并下载。')).toBeVisible();
+  await expect(page.getByText('对方还没有账号？')).toBeVisible();
+  // 等滑出动画结束再截图/量层级，否则会截到动画中间态
+  await page.waitForTimeout(400);
+  const layers = await page.evaluate(() => {
+    const zIndex = (selector: string) => {
+      const element = document.querySelector(selector);
+      return element ? getComputedStyle(element).zIndex : 'missing';
+    };
+    return {
+      mask: zIndex('.ant-drawer-mask'),
+      drawer: zIndex('.ant-drawer-content-wrapper'),
+      tabBar: zIndex('nav[aria-label="主导航"]'),
+    };
+  });
+  console.log('面板/底栏层级：', JSON.stringify(layers));
+  // 底部 Tab 与悬浮上传条必须在滑出面板**下面**（否则会盖住面板按钮）
+  expect(Number(layers.drawer)).toBeGreaterThan(Number(layers.tabBar));
+  await page.screenshot({ path: join(SHOT_DIR, 'mobile-sheet.png'), fullPage: false });
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  await page.keyboard.press('Escape');
 
-  // 5) 用户反馈的区间是 360–430px：两端宽度都不能出现横向滚动，「发送给…」也要还在
+  // 8) 用户反馈的区间是 360–430px：两端宽度都不能横向滚动，「发送给…」也要还在
   for (const width of [360, 430]) {
-    await page.keyboard.press('Escape');
     await page.setViewportSize({ width, height: 800 });
     await page.waitForTimeout(300);
     expect(await horizontalOverflow(page), `${width}px 宽出现横向滚动`).toBeLessThanOrEqual(1);
     await expect(page.getByRole('button', { name: /发送给/ }).first()).toBeVisible();
+    await expect(filesTab).toBeVisible();
   }
 });

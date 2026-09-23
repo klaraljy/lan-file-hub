@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ADMIN_NAV_ITEM,
   MAIN_NAV_ITEMS,
+  MOBILE_TABS,
   isPublicPath,
+  mobileTabForPath,
   navItemsForRole,
   selectedNavKey,
 } from '../src/app/navigation';
@@ -83,5 +85,41 @@ describe('navItemsForRole', () => {
   it('管理入口自己能被高亮，且不污染其他入口', () => {
     expect(selectedNavKey(ADMIN_NAV_ITEM.key)).toBe('/admin');
     expect(selectedNavKey('/admin/users')).toBe('/admin');
+  });
+});
+
+/**
+ * 手机底部 Tab（AGENTS.md §15 阶段 ②）：手机上导航的主入口。
+ * 「最近文件 / 回收站 / 设置 / 系统管理」都算在「我的」Tab 下。
+ * 第 4 个位置留给以后的「广场」，现在只有 3 个。
+ */
+describe('mobileTabForPath', () => {
+  it('三个 Tab 各自能高亮自己', () => {
+    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(['/files', '/shared', '/me']);
+    for (const tab of MOBILE_TABS) {
+      expect(mobileTabForPath(tab.key)).toBe(tab.key);
+    }
+  });
+
+  it('目录详情页仍算「文件」', () => {
+    expect(mobileTabForPath('/files/8f1c-2b')).toBe('/files');
+  });
+
+  it('最近文件 / 回收站 / 设置 / 系统管理都归到「我的」', () => {
+    for (const path of ['/recent', '/trash', '/settings', '/admin', '/admin/users']) {
+      expect(mobileTabForPath(path)).toBe('/me');
+    }
+  });
+
+  it('前缀相近的路径不会被误判', () => {
+    // /trashy 不是 /trash，按"未知路径"处理（落在第一个 Tab），而不是误判成「我的」
+    expect(mobileTabForPath('/trashy')).toBe('/files');
+    expect(mobileTabForPath('/files-old')).toBe('/files');
+  });
+
+  it('带查询串、以及完全未知的路径都不会让底栏熄灭', () => {
+    expect(mobileTabForPath('/shared?page=2')).toBe('/shared');
+    expect(mobileTabForPath('/')).toBe('/files');
+    expect(mobileTabForPath('/something-new')).toBe('/files');
   });
 });

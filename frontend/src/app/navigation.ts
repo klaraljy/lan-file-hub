@@ -50,3 +50,50 @@ export function selectedNavKey(pathname: string): string {
 export function isPublicPath(pathname: string): boolean {
   return pathname === '/s' || pathname.startsWith('/s/');
 }
+
+/* ------------------------------------------------------------------ *
+ * 手机底部 Tab（AGENTS.md §15 阶段 ②：手机要像 App，而不是压扁的桌面版）
+ * ------------------------------------------------------------------ */
+
+export interface MobileTab {
+  /** 点这个 Tab 去哪个路径 */
+  key: string;
+  label: string;
+  icon: 'folder' | 'share' | 'user';
+  /** 哪些路径算在这个 Tab 下（用于高亮）；前缀匹配带斜杠边界 */
+  matches: readonly string[];
+}
+
+/**
+ * 底部 Tab 定义（手机上导航的**主入口**）。
+ *
+ * 「最近文件 / 回收站 / 设置 / 系统管理 / 退出登录」都收进「我的」页，
+ * 顶栏因此不再需要汉堡菜单——这也是用户反馈"憋屈"的主要来源。
+ *
+ * ⚠️ 第 4 个位置**留给以后的「广场」**（AGENTS.md §15 阶段 ⑤）：
+ * 届时在下面这个数组里追加一项即可，布局不用改（Tab 栏自动均分）。
+ */
+export const MOBILE_TABS: readonly MobileTab[] = [
+  { key: '/files', label: '文件', icon: 'folder', matches: ['/files'] },
+  { key: '/shared', label: '分享给我的', icon: 'share', matches: ['/shared'] },
+  {
+    key: '/me',
+    label: '我的',
+    icon: 'user',
+    matches: ['/me', '/recent', '/trash', '/settings', '/admin'],
+  },
+];
+
+/** 当前路径应该高亮哪个底部 Tab（纯函数，可单测） */
+export function mobileTabForPath(pathname: string): string {
+  const path = pathname.split('?')[0] ?? '';
+  for (const tab of MOBILE_TABS) {
+    for (const prefix of tab.matches) {
+      if (path === prefix || path.startsWith(`${prefix}/`)) {
+        return tab.key;
+      }
+    }
+  }
+  // 未知路径（例如以后新增的页面）落在第一个 Tab，避免底部栏全部熄灭
+  return MOBILE_TABS[0]?.key ?? '/files';
+}
