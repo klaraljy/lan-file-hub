@@ -232,6 +232,26 @@ http://<电脑的局域网IP>:5173
 - 界面是桌面版布局，手机能用但排版偏挤（本项目不含移动端适配）。
 - 真机测试的完整步骤与排错见 `docs/testing.md`「八、局域网真机测试」。
 
+### 10. 打包给别人用 / 完全不用 Docker（便携版）
+
+`portable\` 是一个"**免 Docker、免 Node**"的分发包：对方双击一个图标就能用。
+
+```powershell
+.\scripts\build.ps1 -Preset release          # 后端 release
+cd frontend; npm run build; cd ..            # 前端 dist
+.\scripts\portable-setup.ps1                 # 下载免安装 PostgreSQL(≈330MB) + initdb + 迁移 + 建管理员
+```
+
+之后（本机或拷给别人的电脑）：
+
+- 双击 **`portable\启动.cmd`** → 右下角出现托盘图标，服务自动启动（**不弹命令行窗口**）；
+  浏览器打开 `http://127.0.0.1:9180/`，手机打开托盘提示里的 `http://<局域网IP>:9180/`。
+- 停止：双击 `portable\停止.cmd`，或右键托盘图标选「停止」。数据都在 `portable\data\`。
+- 端口**刻意避开开发环境**（便携包 9180/55432/56379，开发环境 9080/5432/6379），两者可同时跑。
+- 实测：`GET /`、`/assets/*.js`、前端路由 `/files` 均 **200**（后端 `WEB_ROOT` 直接托管前端 dist），
+  `/health/ready` **200**，登录 → 上传 → 票据下载内容一致；**后端进程无窗口**（`MainWindowHandle=0`）。
+- 细节与已知限制见 [`docs/portable.md`](docs/portable.md) 与 `portable\使用说明.txt`。
+
 `/health/ready` 在任一必要依赖不可用时返回 **503**，并在 `components` 里逐项说明原因。
 
 浏览器打开 <http://localhost:5173> 即可注册并登录。
