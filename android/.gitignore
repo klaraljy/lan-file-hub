@@ -1,0 +1,7 @@
+# Android 构建产物与本地配置：都不入库
+/local.properties
+/.gradle/
+/build/
+/app/build/
+*.iml
+.idea/

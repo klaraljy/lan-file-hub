@@ -1,0 +1,11 @@
+// 模块声明：只有一个 app。
+pluginManagement {
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+}
+
+rootProject.name = 'lan-file-hub-share'
+include ':app'

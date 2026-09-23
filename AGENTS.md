@@ -73,6 +73,9 @@ lan-file-hub/
 ├── AGENTS.md  README.md  LICENSE  CHANGELOG.md
 ├── CMakeLists.txt  CMakePresets.json  .clang-format  .clang-tidy
 ├── Dockerfile  docker-compose.yml  .env.example  .gitignore
+├── android/                     # 安卓端「局域网快传」：App 内置轻量分享服务（两机互传，AGENTS §15 ③）
+│   ├── app/src/main/java/com/lanfilehub/share/   # ShareHttpServer / ShareController / ShareService / MainActivity / NetUtil
+│   └── lan-file-hub-share.apk   # 构建产物（可直接安装；由 scripts\build-android.ps1 生成）
 ├── backend/
 │   ├── include/lan_file_hub/{api,application,domain,infrastructure,storage,common}/
 │   ├── src/{api,application,domain,infrastructure,storage}/  src/main.cpp
@@ -457,7 +460,7 @@ Git 远程仓库与上传留到项目末尾再做。
 |---|---|---|
 | ① | 登录态下载改**一次性票据 + 浏览器流式落盘**（支持 5 GB） | 2026-09-21 完成 |
 | ② | 手机端按手机设计重做（不是把桌面版压扁） | 待做 |
-| ③ | 手机端 App 内置**轻量分享服务**：两机互传、对方扫码即用、≤1 GB、**不做账号体系** | 待做 |
+| ③ | 手机端 App 内置**轻量分享服务**：两机互传、对方扫码即用、≤1 GB、**不做账号体系** | 2026-09-21 完成（`android/`，见 `docs/android.md`；**未在真机验证**） |
 | ④ | **便携包（免 Docker）** + 托盘图标 + 隐藏命令行窗口 + 换掉命令行菜单 | 待做 |
 | ⑤ | **广场/在线用户**（默认在线可见、可在设置隐藏、**可直接点人发文件**）+ 同账号多端互传 | 待做 |
 

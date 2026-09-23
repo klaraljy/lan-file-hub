@@ -1,0 +1,44 @@
+apply plugin: 'com.android.application'
+
+// 局域网快传：把手机变成一台"临时文件服务器"，朋友用浏览器扫码就能下载。
+// 目标规模：手机 → 手机 ≤ 1 GB，简单可靠优先（AGENTS.md §15.1）。
+android {
+  namespace 'com.lanfilehub.share'
+  compileSdk 35
+
+  defaultConfig {
+    applicationId 'com.lanfilehub.share'
+    minSdk 26
+    targetSdk 35
+    versionCode 1
+    versionName '1.0'
+  }
+
+  buildTypes {
+    release {
+      // 自用工具：不混淆，省得排查问题时对不上类名
+      minifyEnabled false
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  // 界面文案为了"一眼看懂"直接写在布局里；这里关掉 lint 阻断，别让风格告警挡住构建
+  lint {
+    abortOnError false
+    checkReleaseBuilds false
+  }
+
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
+}
+
+dependencies {
+  // 只为了把地址生成二维码（纯 Java 实现，体积很小）
+  implementation 'com.google.zxing:core:3.5.3'
+  testImplementation 'junit:junit:4.13.2'
+}
