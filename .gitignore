@@ -59,3 +59,13 @@ Testing/
 # Playwright 测试产物（失败截图/trace，体积大且可重新生成）
 frontend/test-results/
 frontend/playwright-report/
+
+# ---- 便携包（五阶段改造 ④）----
+# 只提交骨架（启动.cmd / 停止.cmd / 使用说明.txt / README.md）；
+# 下面这些由 scripts\portable-setup.ps1 生成或下载，一律不入库（逐个列出，不用通配符）
+/portable/app/
+/portable/pgsql/
+/portable/redis/
+/portable/tools/
+/portable/data/
+/portable/logs/
