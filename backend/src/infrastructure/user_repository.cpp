@@ -12,6 +12,7 @@ namespace {
 // 统一的时间输出格式：UTC ISO8601，与 docs/api.md 的「统一时间格式」一致
 constexpr char kSelectColumns[] =
     "id, username, email, password_hash, role, status, storage_quota_bytes, used_storage_bytes, "
+    "presence_visible, "
     "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, "
     "to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
 
@@ -29,6 +30,7 @@ User UserFromRow(const RowType& row) {
   user.status = ParseUserStatus(row["status"].template as<std::string>());
   user.storage_quota_bytes = row["storage_quota_bytes"].template as<std::uint64_t>();
   user.used_storage_bytes = row["used_storage_bytes"].template as<std::uint64_t>();
+  user.presence_visible = row["presence_visible"].template as<bool>();
   user.created_at = row["created_at"].template as<std::string>();
   user.updated_at = row["updated_at"].template as<std::string>();
   return user;
@@ -327,6 +329,31 @@ Result<std::uint64_t> UserRepository::Count(const UserQuery& query) {
 
 Status UserRepository::SetQuota(std::string_view id, std::uint64_t quota_bytes) {
   return SetQuotaForTesting(id, quota_bytes);
+}
+
+// 在线可见性（五阶段改造 ⑤）：默认可见，用户可在设置里隐身
+Status UserRepository::SetPresenceVisible(std::string_view id, bool visible) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Status(Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"});
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(visible);
+    params.append(std::string(id));
+    const pqxx::result rows = tx.exec(
+        "UPDATE users SET presence_visible = $1, updated_at = now() "
+        "WHERE id = $2::uuid RETURNING id",
+        params);
+    tx.commit();
+    if (rows.empty()) {
+      return Status(Error{"RESOURCE_NOT_FOUND", "用户不存在"});
+    }
+    return Status::Success();
+  } catch (const std::exception& ex) {
+    return Status(DatabaseError(ex, "更新在线可见性失败"));
+  }
 }
 Status UserRepository::SetQuotaForTesting(std::string_view id, std::uint64_t quota_bytes) {
   auto lease = pool_.Acquire();

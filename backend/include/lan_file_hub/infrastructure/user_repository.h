@@ -51,6 +51,8 @@ class UserRepository {
                                                bool descending, int limit, int offset);
   [[nodiscard]] Result<std::uint64_t> Count(const UserQuery& query);
   [[nodiscard]] Status SetQuota(std::string_view id, std::uint64_t quota_bytes);
+  // 在线可见性（五阶段改造 ⑤：广场）：是否让别人看到自己在线（默认可见）
+  [[nodiscard]] Status SetPresenceVisible(std::string_view id, bool visible);
   [[nodiscard]] Status SetQuotaForTesting(std::string_view id, std::uint64_t quota_bytes);
 
  private:

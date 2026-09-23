@@ -41,6 +41,7 @@ add_library(lan_file_hub_core STATIC
   src/application/auth_service.cpp
   src/application/file_service.cpp
   src/application/file_scanner.cpp
+  src/application/presence_registry.cpp
   src/application/folder_service.cpp
   src/application/permission_checker.cpp
   src/application/upload_service.cpp
@@ -65,6 +66,7 @@ add_library(lan_file_hub_core STATIC
   src/api/permission_controller.cpp
   src/api/share_controller.cpp
   src/api/user_lookup_controller.cpp
+  src/api/presence_controller.cpp
   src/api/web_hosting.cpp
   src/api/request_id_middleware.cpp
   src/api/security_headers.cpp

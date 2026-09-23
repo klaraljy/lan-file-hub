@@ -13,6 +13,7 @@
 #include "lan_file_hub/application/file_service.h"
 #include "lan_file_hub/application/folder_service.h"
 #include "lan_file_hub/application/permission_checker.h"
+#include "lan_file_hub/application/presence_registry.h"
 #include "lan_file_hub/application/sharing_service.h"
 #include "lan_file_hub/application/trash_service.h"
 #include "lan_file_hub/application/upload_service.h"
@@ -29,7 +30,6 @@
 #include "lan_file_hub/infrastructure/upload_session_repository.h"
 #include "lan_file_hub/infrastructure/user_repository.h"
 #include "lan_file_hub/storage/object_storage.h"
-
 namespace lan_file_hub {
 
 struct AppContext {
@@ -79,6 +79,9 @@ struct AppContext {
 
   // 管理员服务（阶段十三）：用户列表、启用/禁用、配额、系统存储统计、审计日志查询
   std::shared_ptr<AdminService> admin_service;
+
+  // 在线状态（五阶段改造 ⑤：广场 / 在线用户）——进程内存，不落库、重启即清空
+  std::shared_ptr<PresenceRegistry> presence;
 
   // 需要脱敏的值（数据库口令、Redis 口令、JWT 密钥），日志与错误信息输出前必须过滤
   std::vector<std::string> secrets;

@@ -25,6 +25,9 @@ struct User {
   UserStatus status{UserStatus::kActive};
   std::uint64_t storage_quota_bytes{0};
   std::uint64_t used_storage_bytes{0};
+  // 是否让别人看到自己在在线列表里（五阶段改造 ⑤：广场）。
+  // 默认可见：用户 2026-09-21 明确要求"只要在线就默认显示，可以在设置里隐藏"。
+  bool presence_visible{true};
   std::string created_at;  // ISO8601 字符串
   std::string updated_at;
 

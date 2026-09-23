@@ -191,8 +191,9 @@ int main(int /*argc*/, char** /*argv*/) {
     spdlog::info("下载限速已启用 | bytes_per_second={}",
                  context->download_limiter->bytes_per_second());
   }
+  // 在线状态（五阶段改造 ⑤：广场）：进程内存 + 心跳超时，不落库、重启即清空
+  context->presence = std::make_shared<PresenceRegistry>();
   SetAppContext(context);
-
   if (!config.IsProduction() && config.jwt_secret.empty()) {
     spdlog::warn("JWT_SECRET 未设置（开发环境可登录但 Token 无法签发；生产环境会拒绝启动）");
   }

@@ -823,6 +823,27 @@ GET /api/v1/users/lookup?q=<关键词>
 - 拿到 `id` 后按既有的授权接口分享：`PUT /api/v1/resources/{resource_id}/permissions/{user_id}`
   （见「权限端点」）。
 
+## 在线状态端点（广场，2026-09-21 新增）
+
+```text
+POST /api/v1/presence/heartbeat   心跳（客户端每 30 秒一次）
+GET  /api/v1/presence/online      在线列表（广场）
+PUT  /api/v1/presence/visibility  设置「是否让别人看到我在线」
+```
+
+给「广场」用：谁在线、在哪台设备上，以及同一账号的多台设备（互传入口）。
+
+- 全部需要登录。心跳体：`{"device_id":"<本机生成>","device_name":"Chrome · Windows","platform":"web"}`；
+  `device_id` 只允许 `[A-Za-z0-9._-]`、长度 ≤ 64，否则 `400 INVALID_ARGUMENT`。
+- 心跳响应：`{"visible":true,"online":[…],"my_devices":[…],"ttl_seconds":90}`。
+  `online` 里**不含自己**，且**不含隐身用户**；同一个人多设备只出现一次（取最新活跃的那台）。
+  `my_devices` 是当前账号的全部在线设备（含 `device_id`，前端据此判断"哪台是我这台"）。
+- **隐私**：`PUT /api/v1/presence/visibility {"visible":false}` → 隐身。
+  默认可见（用户要求"只要在线就默认显示"）；隐身用户不出现在**别人**的列表里，自己始终能看到自己的设备。
+- **状态不落库**：在线状态保存在服务端进程内存里，**90 秒**没有心跳即视为离线（`ttl_seconds`），
+  服务重启即全部清空。多实例部署时各实例各自记账（本项目单机单进程）。
+- 只暴露"是谁 + 什么设备 + 最后活跃时间"；**不返回其它用户的 `device_id`**。
+
 公开访问（无需登录）：
 
 - `GET /api/v1/public/shares/{token}` → 资源名、类型、大小、MIME、权限、剩余次数、`can_download`。

@@ -74,6 +74,7 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req, drogon::FilterCallb
     req->attributes()->insert("user_id", ticket_user.Value().id);
     req->attributes()->insert("user_role", ToDbString(ticket_user.Value().role));
     req->attributes()->insert("username", ticket_user.Value().username);
+    req->attributes()->insert("user_presence_visible", ticket_user.Value().presence_visible);
     req->attributes()->insert("download_ticket_file_id", ticket_claims.Value().file_id);
     req->attributes()->insert("download_ticket_version_id", ticket_claims.Value().version_id);
     fccb();
@@ -96,5 +97,8 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req, drogon::FilterCallb
   req->attributes()->insert("user_id", user.Value().id);
   req->attributes()->insert("user_role", ToDbString(user.Value().role));
   req->attributes()->insert("username", user.Value().username);
+  // 在线状态心跳要用它，顺手带上省一次查库。
+  // ⚠️ 这里必须存 bool：属性是 std::any，存 const char* 再按 std::string 读会取到空串（踩过）。
+  req->attributes()->insert("user_presence_visible", user.Value().presence_visible);
   fccb();
 }
