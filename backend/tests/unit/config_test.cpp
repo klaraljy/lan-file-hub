@@ -85,6 +85,21 @@ TEST(LoadConfigTest, ReadsValuesFromDotEnvFile) {
   EXPECT_EQ(config.cors_allowed_origins[1], "http://127.0.0.1:5173");
 }
 
+// WEB_ROOT：便携包单端口形态（五阶段改造 ④）。
+// 默认必须为空 —— 否则开发环境下后端会去托管不存在的前端目录。
+TEST(LoadConfigTest, WebRootIsEmptyByDefaultAndReadFromEnv) {
+  testing::TempDir dir("config_webroot");
+  const auto defaults = LoadConfig(dir.File("missing.env"));
+  ASSERT_TRUE(defaults.Ok()) << defaults.GetError().message;
+  EXPECT_TRUE(defaults.Value().config.web_root.empty())
+      << "默认不能托管前端：开发时前端由 vite 托管";
+
+  dir.WriteFile("web.env", "WEB_ROOT=web\n");
+  const auto loaded = LoadConfig(dir.File("web.env"));
+  ASSERT_TRUE(loaded.Ok()) << loaded.GetError().message;
+  EXPECT_EQ(loaded.Value().config.web_root, "web");
+}
+
 TEST(LoadConfigTest, RejectsOutOfRangePort) {
   testing::TempDir dir("config_port");
   dir.WriteFile("test.env", "HTTP_PORT=99999\n");

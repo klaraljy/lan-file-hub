@@ -65,6 +65,7 @@ add_library(lan_file_hub_core STATIC
   src/api/permission_controller.cpp
   src/api/share_controller.cpp
   src/api/user_lookup_controller.cpp
+  src/api/web_hosting.cpp
   src/api/request_id_middleware.cpp
   src/api/security_headers.cpp
 )

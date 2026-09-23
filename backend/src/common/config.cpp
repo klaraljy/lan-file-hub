@@ -225,6 +225,7 @@ Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
   config.app_env = ToLower(Trim(PickString(dotenv, "APP_ENV", "development")));
   config.log_level = ToLower(Trim(PickString(dotenv, "LOG_LEVEL", "info")));
   config.log_file = Trim(PickString(dotenv, "LOG_FILE", ""));
+  config.web_root = Trim(PickString(dotenv, "WEB_ROOT", ""));
 
   if (!IsKnownLogLevel(config.log_level)) {
     return ConfigError(

@@ -41,6 +41,12 @@ struct AppConfig {
   std::string log_level{"info"};
   std::string log_file;  // 空 = 只输出到控制台
 
+  // 前端静态文件目录（五阶段改造 ④：便携包单端口形态）。
+  // 空 = 不托管前端（开发时用 vite，生产用 nginx 都走这条路）；
+  // 非空 = 由后端直接托管前端 dist：静态资源走 documentRoot，前端路由回退到 index.html。
+  // 这样便携包里**不需要 Node.js**，只有一个端口、一个进程。
+  std::string web_root;
+
   DatabaseConfig database;
   RedisConfig redis;
   StorageConfig storage;

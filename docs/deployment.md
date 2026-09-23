@@ -22,7 +22,14 @@ JWT_EXPIRE_SECONDS
 DOWNLOAD_RATE_LIMIT
 LOG_LEVEL
 CORS_ALLOWED_ORIGINS
+WEB_ROOT
 ```
+
+> `WEB_ROOT`（五阶段改造 ④）：留空 = 后端只提供 API（开发用 vite、生产用 nginx）；
+> 填成前端 dist 目录（例如 `web`）则**由后端直接托管前端**：静态资源走 documentRoot，
+> 前端路由（`/files`、`/shared`、`/s/<token>` 等）在找不到文件时回退 `index.html`，
+> 而 `/api/`、`/health`、`/metrics` 永不回退（保证前端拿到的是 JSON 而不是 HTML）。
+> 便携包就是靠它做到**单端口、单进程、不需要 Node.js**。
 
 ### 配置要求
 

@@ -20,6 +20,7 @@
 #include "api/http_metrics.h"
 #include "api/request_id_middleware.h"
 #include "lan_file_hub/api/security_headers.h"
+#include "lan_file_hub/api/web_hosting.h"
 #include "lan_file_hub/application/admin_service.h"
 #include "lan_file_hub/application/app_context.h"
 #include "lan_file_hub/common/config.h"
@@ -208,6 +209,13 @@ int main(int /*argc*/, char** /*argv*/) {
   RegisterSecurityAdvices(config.cors_allowed_origins);
   // HTTP 指标（阶段十三）：请求数、状态码分布、响应延迟
   RegisterHttpMetrics();
+
+  // 前端静态托管（五阶段改造 ④）：设置了 WEB_ROOT 就由后端托管前端 dist，
+  // 便携包因此只有一个端口、一个进程，不需要 Node.js 或 nginx。
+  if (const Status hosting = RegisterWebHosting(config.web_root); !hosting.Ok()) {
+    spdlog::error("{}", hosting.GetError().message);
+    return Fail(hosting.GetError().message);
+  }
 
   // 后台清理线程随服务启动；进程退出时由 CleanupService 析构有序 join
   if (context->cleanup_service) {
