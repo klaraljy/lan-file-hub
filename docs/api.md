@@ -390,6 +390,34 @@ Range: bytes=0-499
 Content-Disposition: attachment; filename="______.txt"; filename*=UTF-8''%E4%B8%AD%E6%96%87.txt
 ```
 
+#### 下载票据（大文件流式下载，2026-09-21）
+
+```http
+POST /api/v1/files/{file_id}/download-ticket
+POST /api/v1/files/{file_id}/versions/{version_id}/download-ticket
+```
+
+浏览器直接导航下载时**带不了 `Authorization` 头**，而用 axios 取 blob 会把整个文件读进浏览器内存
+（几 GB 必崩）。所以改成两步：先换一张票据，再用票据下载。
+
+```json
+{
+  "data": {
+    "ticket": "eyJhbGciOiJIUzI1NiJ9...",
+    "url": "/api/v1/files/<file_id>/download?ticket=eyJhbGciOiJIUzI1NiJ9...",
+    "expires_in": 60
+  },
+  "request_id": "uuid"
+}
+```
+
+- 票据是**签名的 JWT**（复用会话令牌那套密钥与库），声明里写死 `fid`（必要时 `vid`）与 `sub`（用户）。
+- 有效期 **60 秒**；`GET .../download?ticket=<票据>` 时 `AuthFilter` 会认票据，
+  但 handler 仍会**再校验一次文件/版本是否与票据一致**，并且**照常检查权限**（票据 ≠ 授权）。
+- **票据不能当会话令牌用**：`Verify()` 会拒绝 `purpose=download` 的令牌；反过来会话令牌也不能当票据用
+  （单元测试覆盖了这两个方向）。
+- 签发接口本身要求登录 + 对该文件有 READ 权限；日志里只记「谁给哪个文件签了票据」，**不记票据内容**。
+
 ### 列表
 
 ```http

@@ -6,9 +6,14 @@
 //   GET  /api/v1/files/{file_id}/versions           历史版本列表（阶段七）
 //   GET  /api/v1/files/{file_id}/versions/{vid}/download  历史版本下载（支持 Range）
 //   POST /api/v1/files/{file_id}/versions/{vid}/restore   恢复历史版本（阶段七）
+//   POST /api/v1/files/{file_id}/download-ticket          取一张 60 秒下载票据（大文件流式下载）
+//   POST /api/v1/files/{file_id}/versions/{vid}/download-ticket  历史版本的下载票据
 //
 // 上传必须流式：Drogon 的 RequestStream 让我们边收边写盘边算 SHA-256，
 // 整个文件不会进内存（AGENTS.md §5 红线）。
+//
+// 下载为什么要票据：登录态下载原来走 axios blob（**整个文件先进浏览器内存**），5 GB 必崩。
+// 改成先取 60 秒票据、再把票据拼进 URL 让**浏览器自己**下载 → 流式落盘、内存与文件大小无关。
 #pragma once
 
 #include <functional>
@@ -32,6 +37,11 @@ class FileController : public drogon::HttpController<FileController> {
                 "AuthFilter");
   ADD_METHOD_TO(FileController::RestoreVersion,
                 "/api/v1/files/{file_id}/versions/{version_id}/restore", drogon::Post,
+                "AuthFilter");
+  ADD_METHOD_TO(FileController::CreateDownloadTicket, "/api/v1/files/{file_id}/download-ticket",
+                drogon::Post, "AuthFilter");
+  ADD_METHOD_TO(FileController::CreateVersionDownloadTicket,
+                "/api/v1/files/{file_id}/versions/{version_id}/download-ticket", drogon::Post,
                 "AuthFilter");
   ADD_METHOD_TO(FileController::Delete, "/api/v1/files/{file_id}", drogon::Delete, "AuthFilter");
   METHOD_LIST_END
@@ -61,6 +71,15 @@ class FileController : public drogon::HttpController<FileController> {
   void RestoreVersion(const drogon::HttpRequestPtr& req,
                       std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                       std::string file_id, std::string version_id);
+
+  // 签发下载票据（先验权限，再签 60 秒票据；票据只对这一个文件/版本有效）
+  void CreateDownloadTicket(const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                            std::string file_id);
+
+  void CreateVersionDownloadTicket(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                                   std::string file_id, std::string version_id);
 
   // 软删除（进入回收站）；恢复与永久删除在 /api/v1/trash 下
   void Delete(const drogon::HttpRequestPtr& req,

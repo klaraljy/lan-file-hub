@@ -8,6 +8,7 @@ import type { ApiEnvelope } from '../types/auth';
 import type { FileMeta } from '../types/file';
 import type { FileVersion } from '../types/version';
 import { http } from './api';
+import { triggerBrowserDownload } from './filesApi';
 
 function unwrap<T>(envelope: ApiEnvelope<T>): T {
   return envelope.data;
@@ -26,21 +27,14 @@ export const versionsApi = {
 
   /**
    * 下载指定历史版本。
-   * 与当前版本下载一样需要 Authorization 头，因此走 blob；
+   * 与当前版本一样走**票据 + 浏览器原生下载**（流式落盘，大文件不会进内存）；
    * 文件名加上 .v<版本号> 后缀，避免和当前版本混淆。
    */
   async download(file: FileMeta, version: FileVersion): Promise<void> {
-    const response = await http.get(`/files/${file.id}/versions/${version.id}/download`, {
-      responseType: 'blob',
-    });
-    const url = URL.createObjectURL(response.data as Blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${file.name}.v${version.version_number}`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    const response = await http.post<ApiEnvelope<{ url: string }>>(
+      `/files/${file.id}/versions/${version.id}/download-ticket`,
+    );
+    triggerBrowserDownload(unwrap(response.data).url, `${file.name}.v${version.version_number}`);
   },
 
   /**

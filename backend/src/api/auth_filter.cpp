@@ -35,16 +35,48 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req, drogon::FilterCallb
                           drogon::FilterChainCallback&& fccb) {
   using namespace lan_file_hub;
 
-  const std::string token = ExtractBearerToken(req->getHeader("Authorization"));
-  if (token.empty()) {
-    // 同时覆盖「没有 Authorization 头」和「不是 Bearer 形式」两种情况
-    Reject(fcb, Error{"UNAUTHENTICATED", "缺少访问令牌"});
-    return;
-  }
-
   const auto context = GetAppContext();
   if (!context) {
     Reject(fcb, Error{"INTERNAL_ERROR", "认证服务未初始化"});
+    return;
+  }
+
+  const std::string token = ExtractBearerToken(req->getHeader("Authorization"));
+  if (token.empty()) {
+    // 没有会话令牌时，允许用「下载票据」通过。
+    // 为什么必须支持：大文件下载要让**浏览器自己**流式落盘（不再把整个文件读进内存），
+    // 而浏览器直接导航下载时带不了 Authorization 头，所以票据放进 URL 查询参数。
+    const std::string ticket = req->getParameter("ticket");
+    if (ticket.empty()) {
+      // 同时覆盖「没有 Authorization 头」和「不是 Bearer 形式」两种情况
+      Reject(fcb, Error{"UNAUTHENTICATED", "缺少访问令牌"});
+      return;
+    }
+
+    auto ticket_claims = context->jwt->VerifyDownloadTicket(ticket);
+    if (!ticket_claims) {
+      Reject(fcb, ticket_claims.GetError());
+      return;
+    }
+    // 票据只能用于它自己绑定的那个文件（路径参数可用时先挡一层，handler 里还有权威校验）
+    const std::string file_param = req->getParameter("file_id");
+    if (!file_param.empty() && file_param != ticket_claims.Value().file_id) {
+      Reject(fcb, Error{"FORBIDDEN", "下载票据与文件不匹配"});
+      return;
+    }
+
+    auto ticket_user = context->auth->CurrentUser(ticket_claims.Value().user_id);
+    if (!ticket_user) {
+      Reject(fcb, ticket_user.GetError());
+      return;
+    }
+
+    req->attributes()->insert("user_id", ticket_user.Value().id);
+    req->attributes()->insert("user_role", ToDbString(ticket_user.Value().role));
+    req->attributes()->insert("username", ticket_user.Value().username);
+    req->attributes()->insert("download_ticket_file_id", ticket_claims.Value().file_id);
+    req->attributes()->insert("download_ticket_version_id", ticket_claims.Value().version_id);
+    fccb();
     return;
   }
 

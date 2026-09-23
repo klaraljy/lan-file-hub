@@ -7,22 +7,28 @@ function unwrap<T>(envelope: ApiEnvelope<T>): T {
 }
 
 /**
- * 取回文件内容并触发浏览器下载。
+ * 大文件流式下载：先换一张 **60 秒有效的下载票据**，再让**浏览器自己**去下载。
  *
- * 为什么不用 <a href>：下载接口需要 Authorization 头，浏览器直接导航带不上它。
- * 已知限制：整文件会先进入浏览器内存（大文件流式下载属于后续阶段）。
+ * 为什么这么做：
+ *   - 下载接口需要 Authorization 头，浏览器直接导航带不上它；
+ *   - 用 axios 取 blob 会把**整个文件读进浏览器内存** —— 几 GB 的文件必然崩（用户实测需求是 5 GB）。
+ * 票据方案下浏览器是**流式落盘**的，内存占用与文件大小无关；票据 60 秒过期、只对这一个文件有效，
+ * 而且后端在签发和下载时都会各自校验一次权限。
  */
-async function downloadBlob(url: string, fileName: string): Promise<void> {
-  const response = await http.get(url, { responseType: 'blob' });
-  const objectUrl = URL.createObjectURL(response.data as Blob);
+async function downloadWithTicket(ticketPath: string, fileName: string): Promise<void> {
+  const response = await http.post<ApiEnvelope<{ url: string }>>(ticketPath);
+  triggerBrowserDownload(unwrap(response.data).url, fileName);
+}
+
+/** 用隐藏的 <a download> 触发浏览器原生下载（流式落盘，不进内存） */
+export function triggerBrowserDownload(url: string, fileName: string): void {
   const anchor = document.createElement('a');
-  anchor.href = objectUrl;
+  anchor.href = url;
   anchor.download = fileName;
+  anchor.rel = 'noopener';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  // 交给浏览器完成下载后再释放
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 export interface ListFilesParams {
@@ -70,14 +76,11 @@ export const filesApi = {
   },
 
   /**
-   * 下载。接口需要 Authorization 头，所以不能直接用 <a href>；
-   * 这里取回 blob 再触发浏览器下载。
-   *
-   * 已知限制：整文件会先进入浏览器内存。大文件的分块/流式下载留到阶段十，
-   * 与「改用 HttpOnly Cookie」一起处理（见 README「已知限制」）。
+   * 下载（**流式落盘**，支持几 GB 的大文件）。
+   * 先取 60 秒票据，再让浏览器自己下载 —— 见 downloadWithTicket 的说明。
    */
   async download(file: FileMeta): Promise<void> {
-    await downloadBlob(`/files/${file.id}/download`, file.name);
+    await downloadWithTicket(`/files/${file.id}/download-ticket`, file.name);
   },
 
   /**
@@ -85,6 +88,6 @@ export const filesApi = {
    * 与 download 走同一条路径，避免两处各写一份下载逻辑。
    */
   async downloadById(fileId: string, fileName: string): Promise<void> {
-    await downloadBlob(`/files/${fileId}/download`, fileName);
+    await downloadWithTicket(`/files/${fileId}/download-ticket`, fileName);
   },
 };

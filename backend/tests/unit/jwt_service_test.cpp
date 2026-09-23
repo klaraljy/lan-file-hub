@@ -116,5 +116,75 @@ TEST(JwtServiceTest, ErrorMessagesNeverLeakTheToken) {
   EXPECT_EQ(claims.GetError().detail.find("eyJ"), std::string::npos);
 }
 
+// ---- 下载票据（五阶段改造 ①：大文件流式下载）----
+
+TEST(JwtServiceTest, DownloadTicketVerifiesBackWithFileAndVersion) {
+  const JwtService service = MakeService();
+  auto ticket = service.IssueDownloadTicket("user-1", "file-9", "version-3");
+  ASSERT_TRUE(ticket.Ok()) << ticket.GetError().message;
+
+  const auto claims = service.VerifyDownloadTicket(ticket.Value());
+  ASSERT_TRUE(claims.Ok()) << claims.GetError().message;
+  EXPECT_EQ(claims.Value().user_id, "user-1");
+  EXPECT_EQ(claims.Value().file_id, "file-9");
+  EXPECT_EQ(claims.Value().version_id, "version-3");
+}
+
+TEST(JwtServiceTest, DownloadTicketWithoutVersionMeansCurrentVersion) {
+  const JwtService service = MakeService();
+  auto ticket = service.IssueDownloadTicket("user-1", "file-9", "");
+  ASSERT_TRUE(ticket.Ok());
+  const auto claims = service.VerifyDownloadTicket(ticket.Value());
+  ASSERT_TRUE(claims.Ok());
+  EXPECT_TRUE(claims.Value().version_id.empty());
+}
+
+// 票据有效期只有 60 秒，**绝不能**当会话令牌去访问别的接口
+TEST(JwtServiceTest, DownloadTicketIsNotAcceptedAsSessionToken) {
+  const JwtService service = MakeService();
+  auto ticket = service.IssueDownloadTicket("user-1", "file-9", "");
+  ASSERT_TRUE(ticket.Ok());
+
+  const auto claims = service.Verify(ticket.Value());
+  EXPECT_FALSE(claims.Ok()) << "下载票据不能当会话令牌用";
+  EXPECT_EQ(claims.GetError().code, "UNAUTHENTICATED");
+}
+
+// 反过来：长期会话令牌也不能塞进 URL 当下载链接用
+TEST(JwtServiceTest, SessionTokenIsNotAcceptedAsDownloadTicket) {
+  const JwtService service = MakeService();
+  const auto token = service.Issue(MakeUser());
+  ASSERT_TRUE(token.Ok());
+
+  const auto claims = service.VerifyDownloadTicket(token.Value());
+  EXPECT_FALSE(claims.Ok()) << "会话令牌（1 小时）不能当 60 秒下载票据用";
+}
+
+TEST(JwtServiceTest, DownloadTicketExpiresAndSaysSo) {
+  const JwtService service = MakeService();
+  auto ticket = service.IssueDownloadTicket("user-1", "file-9", "", 1);  // 1 秒
+  ASSERT_TRUE(ticket.Ok());
+  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+
+  const auto claims = service.VerifyDownloadTicket(ticket.Value());
+  ASSERT_FALSE(claims.Ok());
+  EXPECT_EQ(claims.GetError().code, "TOKEN_EXPIRED")
+      << "过期要说清楚是过期（页面上好提示「重新点一次下载」），而不是笼统的无效";
+}
+
+TEST(JwtServiceTest, DownloadTicketRefusesEmptyIdentifiers) {
+  const JwtService service = MakeService();
+  EXPECT_FALSE(service.IssueDownloadTicket("", "file-9", "").Ok());
+  EXPECT_FALSE(service.IssueDownloadTicket("user-1", "", "").Ok());
+}
+
+TEST(JwtServiceTest, DownloadTicketErrorMessagesNeverLeakTheTicket) {
+  const JwtService service = MakeService();
+  const auto claims = service.VerifyDownloadTicket("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.forged");
+  ASSERT_FALSE(claims.Ok());
+  EXPECT_EQ(claims.GetError().message.find("eyJ"), std::string::npos);
+  EXPECT_EQ(claims.GetError().detail.find("eyJ"), std::string::npos);
+}
+
 }  // namespace
 }  // namespace lan_file_hub

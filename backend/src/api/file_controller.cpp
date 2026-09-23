@@ -17,6 +17,7 @@
 #include "lan_file_hub/common/metrics.h"
 #include "lan_file_hub/common/pagination.h"
 #include "lan_file_hub/common/request_id.h"
+#include "lan_file_hub/infrastructure/jwt_service.h"
 
 namespace lan_file_hub {
 namespace {
@@ -57,6 +58,30 @@ void RespondError(const std::function<void(const drogon::HttpResponsePtr&)>& cal
     spdlog::warn("文件请求失败 | code={} | detail={}", error.code, RedactWithContext(error.detail));
   }
   callback(MakeErrorResponse(error, CurrentRequestId()));
+}
+
+// 用「下载票据」访问时，票据必须与本次请求的文件（以及版本）一致——防止拿 A 的票据去下 B。
+// 没有票据属性就是普通会话令牌访问，直接放行（鉴权已经由 AuthFilter 做过）。
+bool TicketAllows(const drogon::HttpRequestPtr& req, const std::string& file_id,
+                  const std::string& version_id, Error& error) {
+  std::string ticket_file;
+  std::string ticket_version;
+  try {
+    ticket_file = req->attributes()->get<std::string>("download_ticket_file_id");
+    ticket_version = req->attributes()->get<std::string>("download_ticket_version_id");
+  } catch (const std::exception&) {
+    return true;  // 不是票据访问
+  }
+
+  if (ticket_file != file_id) {
+    error = Error{"FORBIDDEN", "下载票据与文件不匹配"};
+    return false;
+  }
+  if (!version_id.empty() && ticket_version != version_id) {
+    error = Error{"FORBIDDEN", "下载票据与版本不匹配"};
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -222,6 +247,13 @@ void FileController::Download(const drogon::HttpRequestPtr& req,
     return;
   }
 
+  // 票据访问：票据里写死的文件必须与本次请求一致（权威校验）
+  Error ticket_error;
+  if (!TicketAllows(req, file_id, "", ticket_error)) {
+    RespondError(callback, ticket_error);
+    return;
+  }
+
   const File& file = download.Value().file;
   const std::string& path = download.Value().absolute_path;
   const std::string range_header = req->getHeader("Range");
@@ -366,6 +398,13 @@ void FileController::DownloadVersion(const drogon::HttpRequestPtr& req,
     return;
   }
 
+  // 票据访问：票据里写死的文件与版本都必须与本次请求一致（权威校验）
+  Error ticket_error;
+  if (!TicketAllows(req, file_id, version_id, ticket_error)) {
+    RespondError(callback, ticket_error);
+    return;
+  }
+
   const File& file = download.Value().file;
   const FileVersion& version = download.Value().version;
   const std::string& path = download.Value().absolute_path;
@@ -477,6 +516,74 @@ void FileController::Delete(const drogon::HttpRequestPtr& req,
                                 : nlohmann::json(nullptr);
   }
   callback(MakeSuccessResponse(payload, CurrentRequestId()));
+}
+
+void FileController::CreateDownloadTicket(
+    const drogon::HttpRequestPtr& req,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback, std::string file_id) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+
+  const Actor actor = ActorFrom(req);
+  // 签发前先按正常权限检查一次：**票据不等于授权**，下载时还会再查一次
+  auto download = context->files_service->PrepareDownload(actor, file_id);
+  if (!download) {
+    RespondError(callback, download.GetError());
+    return;
+  }
+
+  auto ticket =
+      context->jwt->IssueDownloadTicket(actor.user_id, file_id, "", kDownloadTicketTtlSeconds);
+  if (!ticket) {
+    RespondError(callback, ticket.GetError());
+    return;
+  }
+
+  // 日志里不写票据本身（那是凭据）
+  spdlog::info("签发下载票据 | user={} | file_id={} | ttl_seconds={}", actor.user_id, file_id,
+               kDownloadTicketTtlSeconds);
+  callback(MakeSuccessResponse(
+      nlohmann::json{{"ticket", ticket.Value()},
+                     {"url", "/api/v1/files/" + file_id + "/download?ticket=" + ticket.Value()},
+                     {"expires_in", kDownloadTicketTtlSeconds}},
+      CurrentRequestId()));
+}
+
+void FileController::CreateVersionDownloadTicket(
+    const drogon::HttpRequestPtr& req,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback, std::string file_id,
+    std::string version_id) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+
+  const Actor actor = ActorFrom(req);
+  auto download = context->files_service->PrepareVersionDownload(actor, file_id, version_id);
+  if (!download) {
+    RespondError(callback, download.GetError());
+    return;
+  }
+
+  auto ticket = context->jwt->IssueDownloadTicket(actor.user_id, file_id, version_id,
+                                                  kDownloadTicketTtlSeconds);
+  if (!ticket) {
+    RespondError(callback, ticket.GetError());
+    return;
+  }
+
+  spdlog::info("签发历史版本下载票据 | user={} | file_id={} | version_id={}", actor.user_id,
+               file_id, version_id);
+  callback(MakeSuccessResponse(
+      nlohmann::json{{"ticket", ticket.Value()},
+                     {"url", "/api/v1/files/" + file_id + "/versions/" + version_id +
+                                 "/download?ticket=" + ticket.Value()},
+                     {"expires_in", kDownloadTicketTtlSeconds}},
+      CurrentRequestId()));
 }
 
 }  // namespace lan_file_hub
