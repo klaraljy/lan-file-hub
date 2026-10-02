@@ -4,6 +4,7 @@
 #include <cctype>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <drogon/drogon.h>
 
@@ -43,6 +44,19 @@ void ApplyCorsHeaders(const drogon::HttpResponsePtr& response, const std::string
   response->addHeader("Access-Control-Expose-Headers", kExposedResponseHeaders);
 }
 
+// 这条请求是不是"后端自托管的前端页面"（WEB_ROOT：/、/assets/*、/favicon.ico，以及
+// /files、/login、/s/<token> 这类由前端路由接管、回退到 index.html 的路径）。
+// 只有 /api 与 /health 是纯数据接口，其余一律按网页处理。
+bool IsWebHostingPath(std::string_view path) {
+  if (path == "/api" || path.starts_with("/api/")) {
+    return false;
+  }
+  if (path == "/health" || path.starts_with("/health/")) {
+    return false;
+  }
+  return true;
+}
+
 void ApplySecurityHeaders(const drogon::HttpRequestPtr& req,
                           const drogon::HttpResponsePtr& response) {
   // 浏览器不得根据内容猜类型（上传的文件可能被当成 HTML 执行）
@@ -52,16 +66,28 @@ void ApplySecurityHeaders(const drogon::HttpRequestPtr& req,
   response->addHeader("Referrer-Policy", "no-referrer");
   response->addHeader("X-XSS-Protection", "0");  // 关闭已废弃的浏览器 XSS 审计器
   response->addHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
-  // API 只输出 JSON 与文件，不应被当成文档执行任何脚本或表单
-  response->addHeader(
-      "Content-Security-Policy",
-      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+  // ⛔ 网页与接口的 CSP **必须分开**：给网页套 API 的 `default-src 'none'` 会把页面自己的
+  //    /assets/index-*.js 与 /favicon.ico 一起拦掉，浏览器直接白屏（2026-10-02 实测）。
+  //    具体策略见 BuildContentSecurityPolicy（按路径区分，单元测试守着）。
+  response->addHeader("Content-Security-Policy", BuildContentSecurityPolicy(req->path()));
   if (req->isOnSecureConnection()) {
     response->addHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
 }
 
 }  // namespace
+
+std::string BuildContentSecurityPolicy(std::string_view request_path) {
+  if (!IsWebHostingPath(request_path)) {
+    // 数据接口只输出 JSON 与文件，不应被当成文档执行任何脚本或表单
+    return "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+  }
+  // 网页：只放行**同源**资源，不引入任何 CDN；样式必须允许 'unsafe-inline'，
+  // 因为 Ant Design 是运行时注入样式的（去掉它页面会变成没有样式的白板）。
+  return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+         "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
+         "object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+}
 
 bool IsOriginAllowed(const std::vector<std::string>& allowed_origins, std::string_view origin) {
   if (origin.empty() || origin == "*") {

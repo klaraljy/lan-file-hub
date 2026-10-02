@@ -13,6 +13,13 @@ namespace lan_file_hub {
 [[nodiscard]] bool IsOriginAllowed(const std::vector<std::string>& allowed_origins,
                                    std::string_view origin);
 
+// 按请求路径给出合适的 CSP：
+// - 网页路径（后端自托管前端：`/`、`/assets/*`、SPA 路由）：必须放行页面自己的脚本与样式，
+//   否则浏览器直接白屏 —— 2026-10-02 实测，`default-src 'none'` 把 `/assets/index-*.js`
+//   与 `/favicon.ico` 一起拦掉，HTTP 全是 200 但页面什么都没有；
+// - 数据接口（`/api`、`/health`）：保持最严格的 `default-src 'none'`。
+[[nodiscard]] std::string BuildContentSecurityPolicy(std::string_view request_path);
+
 // 注册 CORS 与安全响应头：
 // - 预检 OPTIONS 在路由之前直接应答（204），避免落到未注册的 OPTIONS 路由上变成 404；
 // - 只有命中白名单的 Origin 才会收到 CORS 头，绝不使用通配；

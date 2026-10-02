@@ -146,8 +146,17 @@
   避免落到未注册的 OPTIONS 路由上变成 404；只有命中白名单的 `Origin` 才回 `Access-Control-Allow-Origin`，绝不回通配；
   非白名单来源的预检直接 403，普通请求不回 CORS 头（由浏览器拦截，不泄露白名单内容）；响应始终带 `Vary: Origin` 防止缓存串站。
 - 安全响应头（所有响应）：`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`、
-  `X-XSS-Protection: 0`、`Permissions-Policy: geolocation=(), microphone=(), camera=()`、
-  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`。
+  `X-XSS-Protection: 0`、`Permissions-Policy: geolocation=(), microphone=(), camera=()`。
+- **CSP 按请求路径分两套**（`BuildContentSecurityPolicy()`，2026-10-02 修）：
+  - 数据接口（`/api`、`/health`）：`default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`；
+  - **网页**（后端自托管前端时的 `/`、`/assets/*`、`/favicon.ico` 与 SPA 路由）：`default-src 'self'; script-src 'self';
+    style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self';
+    object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`。
+    只放行**同源**资源（不引 CDN）；`style-src` 必须带 `'unsafe-inline'`，因为 Ant Design 运行时注入样式。
+  - ⛔ **为什么必须分开**：给网页套 API 那套 `default-src 'none'` 会把页面自己的 `/assets/index-*.js` 与
+    `/favicon.ico` 一起拦掉 —— HTTP 全是 200，浏览器里却是**白屏**（2026-10-02 用户实测踩到；
+    只用状态码验证发现不了，必须真在浏览器里渲染一次）。单元测试 `SecurityHeadersTest.WebPagesGetUsableCsp`
+    与 `ApiAndHealthPathsKeepStrictCsp` 守着这条边界。
 - HSTS **仅在连接确实走 TLS 时**下发（明文 HTTP 下下发会把站点锁死）；本服务不自建 TLS，HTTPS 交给反向代理，见 `deployment.md`。
 - 验收：`e2e-phase12.ps1` 场景 I（11 项）覆盖预检、白名单外来源、CORS 头、安全头与 HSTS 缺席。
 

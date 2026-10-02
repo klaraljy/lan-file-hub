@@ -41,5 +41,29 @@ TEST(SecurityHeadersTest, EmptyWhitelistAllowsNothing) {
   EXPECT_FALSE(IsOriginAllowed({}, "http://localhost:5173"));
 }
 
+TEST(SecurityHeadersTest, WebPagesGetUsableCsp) {
+  // 后端自托管前端时，页面自己的脚本/样式必须放行，否则浏览器白屏
+  // （2026-10-02 实测：HTTP 200 但 CSP 把 /assets/index-*.js 拦了，界面什么都没有）
+  for (const std::string path :
+       {"/", "/index.html", "/assets/index-CZkY6Ifk.js", "/favicon.ico", "/files", "/login",
+        "/s/sometoken", "/plaza"}) {
+    const std::string csp = BuildContentSecurityPolicy(path);
+    EXPECT_NE(csp.find("script-src 'self'"), std::string::npos) << path;
+    EXPECT_NE(csp.find("style-src 'self' 'unsafe-inline'"), std::string::npos) << path;
+    EXPECT_EQ(csp.find("default-src 'none'"), std::string::npos) << path;
+    EXPECT_EQ(csp.find("http://"), std::string::npos) << path;   // 不放行任何外部来源
+    EXPECT_EQ(csp.find("https://"), std::string::npos) << path;  // 同上（不含 CDN）
+  }
+}
+
+TEST(SecurityHeadersTest, ApiAndHealthPathsKeepStrictCsp) {
+  const std::string strict =
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+  for (const std::string path :
+       {"/api", "/api/v1/files", "/api/v1/auth/login", "/health", "/health/ready"}) {
+    EXPECT_EQ(BuildContentSecurityPolicy(path), strict) << path;
+  }
+}
+
 }  // namespace
 }  // namespace lan_file_hub
