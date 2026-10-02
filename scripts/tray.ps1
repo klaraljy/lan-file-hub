@@ -24,6 +24,10 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# ⛔ 关掉进度条：PowerShell 5.1 的 Invoke-WebRequest 会往控制台写进度条，
+#    而托盘每 5 秒查一次状态 —— 控制台窗口就会**不停闪烁**（2026-10-02 用户投诉"一闪一闪"）。
+#    这里一关，加上 Update-Tray 不做 HTTP 请求，窗口启动打印完面板后就完全安静。
+$ProgressPreference = 'SilentlyContinue'
 
 # ---- 形态识别 ----------------------------------------------------------------
 $ToolsDir = $PSScriptRoot
@@ -335,9 +339,12 @@ function Show-Tray {
   $notify.ContextMenuStrip = $menu
 
   function Update-Tray {
-    $status = Get-StackStatus
-    if ($status.Backend) {
-      $notify.Text = 'lan-file-hub：运行中' + $(if ($status.LanUrl) { '（手机：' + $status.LanUrl + '）' } else { '' })
+    # ⛔ 这个函数每 5 秒跑一次，**绝不许**在里面发 HTTP 请求或产生任何控制台输出
+    #    （进度条/输出会让窗口一闪一闪）。只用 TCP 探活；
+    #    HTTP 探测只放在 Show-Panel / Open-Web 这类一次性动作里。
+    $backendUp = Test-Port $HttpPort
+    if ($backendUp) {
+      $notify.Text = 'lan-file-hub：运行中' + $(if ($WebUrlLan) { '（手机：' + $WebUrlLan + '）' } else { '' })
       $startItem.Enabled = $false
       $stopItem.Enabled = $true
     } else {

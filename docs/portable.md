@@ -124,6 +124,11 @@ cd frontend; npm run build; cd ..          # 前端 dist（1.4 MB 左右）
      打印两遍** —— 中文、`：`、`✅` 全部变成「已已启启动动」，ASCII 与 `═` 却正常。
      保持系统默认代码页即可（PowerShell 按控制台代码页输出，中文正常）；
      控制台里也**只用 ASCII 装饰**（`=`、`-`、`[OK]`），不要用 `✅/❌/═/─/→`。
+  6. **每 5 秒跑一次的状态检查不许发 HTTP、也不许产生任何控制台输出**（2026-10-02 用户投诉
+     窗口"一闪一闪"）：PowerShell 5.1 的 `Invoke-WebRequest` 会写进度条，控制台一有输出窗口就闪。
+     脚本顶部必须保持 `$ProgressPreference = 'SilentlyContinue'`，`Update-Tray` 只做 TCP 探活；
+     HTTP 探测只留在一次性动作（`Show-Panel`、`Open-Web`）里。
+     验收方法：把托盘输出重定向到文件，跑 20 秒，比较第 7 秒与第 18 秒的文件大小 —— 必须一样。
 
 ## 7. 桌面入口（带图标的快捷方式）
 
