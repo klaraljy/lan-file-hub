@@ -264,30 +264,38 @@ function Open-Path([string]$Path) {
 
 # 用户要的"看得见"面板（2026-10-02 明确要求）：启动后在命令行里直接给出
 # 「电脑打开哪个地址」「手机打开哪个地址」「各组件状态」「怎么用」「怎么停」，不用去翻文档。
+#
+# ⛔ 只允许 ASCII 装饰（= - [OK]）：East Asian Wide 的字符（中文、✅、：、→）在 chcp 65001 的
+#    ConPTY 控制台里会被**重复打印一遍** —— 用户实测看到「已已启启动动 ✅✅」「电电脑脑打打开开：：」。
+#    所以这里不再用 ✅/❌/═/─/→，入口脚本也不再 chcp 65001（让控制台留在系统默认代码页）。
+function Get-Mark([bool]$Ok) { if ($Ok) { '[OK]' } else { '[--]' } }
+
 function Show-Panel {
   $status = Get-StackStatus
+  $ready = ($status.Backend -and $status.WebPage)
   Write-Host ''
-  Write-Host '  ══════════════════════════════════════════════════════' -ForegroundColor DarkCyan
-  Write-Host ('   lan-file-hub  ' + $(if ($status.Backend -and $status.WebPage) { '已启动 ✅' } else { '启动中/未就绪 ⚠' })) -ForegroundColor Cyan
-  Write-Host '  ══════════════════════════════════════════════════════' -ForegroundColor DarkCyan
+  Write-Host '  ======================================================' -ForegroundColor DarkCyan
+  Write-Host ('   lan-file-hub   ' + $(if ($ready) { '已启动，可以用了' } else { '还没就绪，请稍等或看日志' })) -ForegroundColor Cyan
+  Write-Host '  ======================================================' -ForegroundColor DarkCyan
+  Write-Host ''
   Write-Host ('   电脑打开：  ' + $WebUrlLocal) -ForegroundColor White
   if ($WebUrlLan) {
     Write-Host ('   手机打开：  ' + $WebUrlLan) -ForegroundColor Yellow
-    Write-Host '               （手机要和这台电脑连同一个 WiFi 或手机热点）' -ForegroundColor DarkGray
+    Write-Host '               （手机要连同一个 WiFi 或手机热点）' -ForegroundColor DarkGray
   } else {
-    Write-Host '   手机打开：  没找到局域网 IP —— 电脑先连上 WiFi/热点再启动' -ForegroundColor Yellow
+    Write-Host '   手机打开：  没找到局域网 IP，先让电脑连上 WiFi/热点' -ForegroundColor Yellow
   }
   Write-Host ''
-  Write-Host ('   数据库 ' + $(if ($status.Postgres) { '✅' } else { '❌' }) + '    Redis ' + $(if ($status.Redis) { '✅' } else { '❌' }) + '    后端 ' + $(if ($status.Backend) { '✅' } else { '❌' }) + '    网页 ' + $(if ($status.WebPage) { '✅' } else { '❌' })) -ForegroundColor Gray
+  Write-Host ('   数据库 ' + (Get-Mark $status.Postgres) + '   Redis ' + (Get-Mark $status.Redis) + '   后端 ' + (Get-Mark $status.Backend) + '   网页 ' + (Get-Mark $status.WebPage)) -ForegroundColor Gray
   if ($IsPortable -and (Test-Path (Join-Path $PortableRoot 'logs\bootstrap-admin.txt'))) {
     Write-Host '   管理员口令：见 logs\bootstrap-admin.txt（登录后改掉口令并删掉这个文件）' -ForegroundColor DarkGray
   }
   Write-Host ''
-  Write-Host '   ── 怎么用 ─────────────────────────────────────────' -ForegroundColor DarkGray
+  Write-Host '   --- 怎么用 ------------------------------------------' -ForegroundColor DarkGray
   Write-Host '   1) 电脑：浏览器已自动打开，登录后在「我的文件」里上传' -ForegroundColor Gray
   Write-Host '   2) 手机：浏览器输入上面"手机打开"的地址；或用手机 App 连接' -ForegroundColor Gray
   Write-Host '   3) 同一个账号在手机登录，看到的就是同一批文件（不用"传"）' -ForegroundColor Gray
-  Write-Host '   停止服务：右键右下角托盘图标 →「停止」（或双击 停止.cmd）' -ForegroundColor Gray
+  Write-Host '   停止服务：右键右下角托盘图标 ->「停止」（或双击 停止.cmd）' -ForegroundColor Gray
   Write-Host '   本窗口可最小化；直接关掉窗口不会停止服务' -ForegroundColor DarkGray
   Write-Host ''
 }
@@ -348,11 +356,12 @@ function Show-Tray {
   Update-Tray
   # 双击图标 = 直接能用：托盘起来时如果服务没在跑，就自动启动一次（用户不用再点菜单）
   if (-not (Test-Port $HttpPort)) {
-    $notify.ShowBalloonTip(3000, 'lan-file-hub', '正在启动服务…', [System.Windows.Forms.ToolTipIcon]::Info)
+    Write-Host '  正在启动服务…' -ForegroundColor Cyan
     [void](Start-Stack)
     Update-Tray
   }
-  $notify.ShowBalloonTip(3000, 'lan-file-hub', ('就绪' + $(if ($WebUrlLan) { '，手机可打开 ' + $WebUrlLan } else { '' })), [System.Windows.Forms.ToolTipIcon]::Info)
+  # ⛔ 这里**不要**用 $notify.ShowBalloonTip：用户 2026-10-02 明确说"右下角每次都会弹出 powershell
+  #    的消息"，要的是安静启动 —— 信息一律打在窗口里，不弹气泡。（托盘图标的悬停提示保留。）
 
   # 让用户一眼看到地址（而不是只有一个藏在右下角的图标），并自动弹出登录画面
   Show-Panel
