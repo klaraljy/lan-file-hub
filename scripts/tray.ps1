@@ -1,7 +1,8 @@
 ﻿# 托盘程序（五阶段改造 ④）：把"命令行菜单"换成托盘图标。
 #
-#   .\tray.ps1                        # 显示托盘图标（双击图标=打开网页）
-#   .\tray.ps1 -Action start          # 启动（后端以**隐藏窗口**方式运行，绝不弹命令行）
+#   .\tray.ps1                        # 启动服务 + 命令行打印"电脑地址/手机地址" + 自动打开浏览器 + 托盘图标
+#   .\tray.ps1 -Action start          # 只启动并打印地址面板（后端以**隐藏窗口**方式运行，绝不弹命令行）
+#   .\tray.ps1 -NoBrowser             # 同上，但不自动打开浏览器（自动化验证用）
 #   .\tray.ps1 -Action stop           # 停止
 #   .\tray.ps1 -Action status         # 打印状态（非交互式调用默认走这条）
 #   .\tray.ps1 -Action open           # 打开网页
@@ -17,7 +18,9 @@
 param(
   [ValidateSet('', 'start', 'stop', 'status', 'open', 'tray')][string]$Action = '',
   # 自动化验证用：起托盘后 N 秒自动退出（0 = 一直显示）
-  [int]$SelfTestSeconds = 0
+  [int]$SelfTestSeconds = 0,
+  # 启动后**不**自动打开浏览器（自动化验证用；用户日常就是靠它自动弹出登录画面）
+  [switch]$NoBrowser
 )
 
 $ErrorActionPreference = 'Continue'
@@ -139,9 +142,25 @@ function Start-Stack {
     if (-not (Test-Path $PgCtl)) { Write-Host '  找不到便携 PostgreSQL（pgsql\bin\pg_ctl.exe），先跑 scripts\portable-setup.ps1' -ForegroundColor Red; return $false }
     if (-not (Test-Port $PgPort)) {
       Write-Host '  启动数据库…' -ForegroundColor Cyan
-      # ⚠️ 不要用 `| Out-Null`：postgres 子进程会继承管道句柄导致永久阻塞（实测踩到过）
-      & $PgCtl -D $PgData -l (Join-Path $LogDir 'postgres.log') -o ('-p ' + $PgPort + ' -h 127.0.0.1') start *> (Join-Path $LogDir 'pg-start.log')
-      for ($i = 0; $i -lt 30 -and -not (Test-Port $PgPort); $i++) { Start-Sleep -Milliseconds 500 }
+      # ⛔ 这里**既不能用 `| Out-Null`、也不能用 `*>` 重定向**：postgres 子进程会继承那个管道/重定向句柄，
+      #    PowerShell 5.1 于是一直等一个永远不来的 EOF —— 现象是 pg-start.log 写着"服务器进程已经启动"、
+      #    数据库端口也通了，脚本却**永久卡在这一行**，后面的 Redis 与后端根本不启动，托盘也不出来
+      #    （2026-09-21 实测复现，用户双击桌面按钮就是这个症状）。
+      #    正确做法：Start-Process 把输出重定向到**文件**，然后用**轮询端口**判断是否就绪。
+      # ⛔ Start-Process 的 -ArgumentList 传**数组**时不会给含空格的元素自动加引号：
+      #    `'-o', ('-p ' + $PgPort + ' -h 127.0.0.1')` 会被拆成两个参数，pg_ctl 直接报
+      #    「无效的参数模式 "55432"」拒绝启动（2026-09-21 实测踩到）。这里拼成一整条带引号的字符串。
+      $pgStartArgs = '-D "' + $PgData + '" -l "' + (Join-Path $LogDir 'postgres.log') + '" -o "-p ' + $PgPort + ' -h 127.0.0.1" start'
+      Start-Process -FilePath $PgCtl -WindowStyle Hidden -ArgumentList $pgStartArgs -RedirectStandardOutput (Join-Path $LogDir 'pg-start.log') -RedirectStandardError (Join-Path $LogDir 'pg-start.err') | Out-Null
+      for ($i = 0; $i -lt 40 -and -not (Test-Port $PgPort); $i++) { Start-Sleep -Milliseconds 500 }
+      if (-not (Test-Port $PgPort)) {
+        Write-Host '  数据库没起来，日志末尾：' -ForegroundColor Yellow
+        if (Test-Path (Join-Path $LogDir 'postgres.log')) {
+          Get-Content (Join-Path $LogDir 'postgres.log') -Encoding UTF8 -Tail 6 | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor DarkGray }
+        }
+        return $false
+      }
+      Write-Host ('  数据库已就绪（端口 ' + $PgPort + '）') -ForegroundColor Green
     }
     if (-not (Test-Port $RedisPort) -and (Test-Path $RedisExe)) {
       Write-Host '  启动 Redis…' -ForegroundColor Cyan
@@ -157,7 +176,11 @@ function Start-Stack {
   } else {
     # 开发形态：依赖由 Docker 起，交给既有脚本
     Write-Host '  开发形态：转调 scripts\start.ps1' -ForegroundColor Cyan
-    & (Join-Path $ProjectRoot 'scripts\start.ps1') -NoBrowser *> (Join-Path $LogDir 'start.log')
+    # 同样不要 `*>`：start.ps1 会拉起常驻的 node/vite，它们继承句柄后本行永不返回
+    $child = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ProjectRoot 'scripts\start.ps1'), '-NoBrowser'
+    ) -RedirectStandardOutput (Join-Path $LogDir 'start.log') -RedirectStandardError (Join-Path $LogDir 'start.err')
+    [void]$child.WaitForExit(120000)
     return (Test-Port $HttpPort)
   }
 
@@ -217,7 +240,11 @@ function Stop-Stack {
     if ($path -and ($path -ieq $RedisExe)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
   }
   if ((Test-Path $PgCtl) -and (Test-Path $PgData)) {
-    & $PgCtl -D $PgData stop -m fast *> (Join-Path $LogDir 'pg-stop.log')
+    # 同 Start-Stack：停止也用 Start-Process，不要用 `*>`（重定向句柄同样会吊住脚本）；
+    # 路径可能含空格，所以拼成整条带引号的参数串（原因见 Start-Stack）
+    $pgStopArgs = '-D "' + $PgData + '" stop -m fast'
+    Start-Process -FilePath $PgCtl -WindowStyle Hidden -ArgumentList $pgStopArgs -RedirectStandardOutput (Join-Path $LogDir 'pg-stop.log') -RedirectStandardError (Join-Path $LogDir 'pg-stop.err') | Out-Null
+    for ($i = 0; $i -lt 30 -and (Test-Port $PgPort); $i++) { Start-Sleep -Milliseconds 500 }
   }
   Write-Host '  PostgreSQL / Redis 已停止（数据都在 data\ 里，下次启动还在）' -ForegroundColor Green
 }
@@ -233,6 +260,36 @@ function Open-Web {
 
 function Open-Path([string]$Path) {
   if (Test-Path $Path) { Start-Process $Path | Out-Null } else { Write-Host ('  不存在：' + $Path) -ForegroundColor Yellow }
+}
+
+# 用户要的"看得见"面板（2026-10-02 明确要求）：启动后在命令行里直接给出
+# 「电脑打开哪个地址」「手机打开哪个地址」「各组件状态」「怎么用」「怎么停」，不用去翻文档。
+function Show-Panel {
+  $status = Get-StackStatus
+  Write-Host ''
+  Write-Host '  ══════════════════════════════════════════════════════' -ForegroundColor DarkCyan
+  Write-Host ('   lan-file-hub  ' + $(if ($status.Backend -and $status.WebPage) { '已启动 ✅' } else { '启动中/未就绪 ⚠' })) -ForegroundColor Cyan
+  Write-Host '  ══════════════════════════════════════════════════════' -ForegroundColor DarkCyan
+  Write-Host ('   电脑打开：  ' + $WebUrlLocal) -ForegroundColor White
+  if ($WebUrlLan) {
+    Write-Host ('   手机打开：  ' + $WebUrlLan) -ForegroundColor Yellow
+    Write-Host '               （手机要和这台电脑连同一个 WiFi 或手机热点）' -ForegroundColor DarkGray
+  } else {
+    Write-Host '   手机打开：  没找到局域网 IP —— 电脑先连上 WiFi/热点再启动' -ForegroundColor Yellow
+  }
+  Write-Host ''
+  Write-Host ('   数据库 ' + $(if ($status.Postgres) { '✅' } else { '❌' }) + '    Redis ' + $(if ($status.Redis) { '✅' } else { '❌' }) + '    后端 ' + $(if ($status.Backend) { '✅' } else { '❌' }) + '    网页 ' + $(if ($status.WebPage) { '✅' } else { '❌' })) -ForegroundColor Gray
+  if ($IsPortable -and (Test-Path (Join-Path $PortableRoot 'logs\bootstrap-admin.txt'))) {
+    Write-Host '   管理员口令：见 logs\bootstrap-admin.txt（登录后改掉口令并删掉这个文件）' -ForegroundColor DarkGray
+  }
+  Write-Host ''
+  Write-Host '   ── 怎么用 ─────────────────────────────────────────' -ForegroundColor DarkGray
+  Write-Host '   1) 电脑：浏览器已自动打开，登录后在「我的文件」里上传' -ForegroundColor Gray
+  Write-Host '   2) 手机：浏览器输入上面"手机打开"的地址；或用手机 App 连接' -ForegroundColor Gray
+  Write-Host '   3) 同一个账号在手机登录，看到的就是同一批文件（不用"传"）' -ForegroundColor Gray
+  Write-Host '   停止服务：右键右下角托盘图标 →「停止」（或双击 停止.cmd）' -ForegroundColor Gray
+  Write-Host '   本窗口可最小化；直接关掉窗口不会停止服务' -ForegroundColor DarkGray
+  Write-Host ''
 }
 
 # ---- 托盘 --------------------------------------------------------------------
@@ -297,6 +354,10 @@ function Show-Tray {
   }
   $notify.ShowBalloonTip(3000, 'lan-file-hub', ('就绪' + $(if ($WebUrlLan) { '，手机可打开 ' + $WebUrlLan } else { '' })), [System.Windows.Forms.ToolTipIcon]::Info)
 
+  # 让用户一眼看到地址（而不是只有一个藏在右下角的图标），并自动弹出登录画面
+  Show-Panel
+  if (-not $NoBrowser -and (Test-Port $HttpPort)) { Start-Process $WebUrlLocal | Out-Null }
+
   $timer = New-Object System.Windows.Forms.Timer
   $timer.Interval = 5000
   $timer.add_Tick({ Update-Tray })
@@ -322,7 +383,11 @@ function Show-Tray {
 # ---- 入口 --------------------------------------------------------------------
 if ($Action) {
   switch ($Action) {
-    'start' { [void](Start-Stack) }
+    'start' {
+      [void](Start-Stack)
+      Show-Panel
+      if (-not $NoBrowser -and (Test-Port $HttpPort)) { Start-Process $WebUrlLocal | Out-Null }
+    }
     'stop' { Stop-Stack }
     'status' { Write-Status }
     'open' { Open-Web }

@@ -254,11 +254,31 @@ if (-not (Test-Path (Join-Path $PgData 'PG_VERSION'))) {
   Ok 'data\pg 已存在，跳过 initdb'
 }
 
+# ⛔ 端口**必须写进 postgresql.conf**：`-o '-p N'` 只对**这一次**启动有效，
+#    之后任何不带 -o 的启动（手动 pg_ctl、托盘、照抄命令的人）都会退回默认 5432，
+#    而后端 .env 连的是 PGPORT → 表现为「数据库明明起来了，后端却报 connection refused」
+#    （2026-09-21 实测踩到：便携库跑在 5432，后端连 55432 失败）。
+$PgConf = Join-Path $PgData 'postgresql.conf'
+if (Test-Path $PgConf) {
+  $confText = Get-Content $PgConf -Raw -Encoding UTF8
+  if ($confText -notmatch ('(?m)^\s*port\s*=\s*' + $PgPort + '\s*$')) {
+    Add-Content -Path $PgConf -Encoding UTF8 -Value (
+      "`r`n# --- 便携包：固定端口（scripts\portable-setup.ps1 写入；改端口要同时改 app\.env 的 PGPORT）---`r`n" +
+      'port = ' + $PgPort + "`r`n" + "listen_addresses = '127.0.0.1'`r`n")
+    Ok ('已把端口 ' + $PgPort + ' 写入 postgresql.conf（避免退回 5432）')
+  } else {
+    Ok ('postgresql.conf 里的端口已是 ' + $PgPort)
+  }
+}
+
 if (-not (Test-Port $PgPort)) {
-  # ⚠️ 这里**不能**用 `| Out-Null`：pg_ctl 会派生出 postgres 子进程，子进程继承管道句柄后
-  # 管道永远等不到 EOF，脚本会永久卡在这一行（实测踩到过，AGENTS.md §9 记着这个坑）。
-  # 重定向到文件就不会阻塞。
-  & $PgCtlPath -D $PgData -l (Join-Path $TargetRoot 'logs\postgres.log') -o ('-p ' + $PgPort + ' -h 127.0.0.1') start *> (Join-Path $TargetRoot 'logs\pg-start.log')
+  # ⛔ 这里**既不能用 `| Out-Null`、也不能用 `*>`**：pg_ctl 会派生出 postgres 子进程，子进程继承那个
+  # 管道/重定向句柄，PowerShell 等不到 EOF → 脚本永久卡在这一行（实测踩到过，AGENTS.md §9 记着这个坑）。
+  # 用 Start-Process 重定向到文件，再轮询端口判断就绪。
+  # ⛔ -ArgumentList 传数组时不会给含空格的元素加引号，`-o '-p N -h 127.0.0.1'` 会被拆开，
+  #    pg_ctl 报「无效的参数模式」拒绝启动 —— 必须拼成一整条带引号的字符串。
+  $pgStartArgs = '-D "' + $PgData + '" -l "' + (Join-Path $TargetRoot 'logs\postgres.log') + '" -o "-p ' + $PgPort + ' -h 127.0.0.1" start'
+  Start-Process -FilePath $PgCtlPath -WindowStyle Hidden -ArgumentList $pgStartArgs -RedirectStandardOutput (Join-Path $TargetRoot 'logs\pg-start.log') -RedirectStandardError (Join-Path $TargetRoot 'logs\pg-start.err') | Out-Null
   for ($i = 0; $i -lt 40 -and -not (Test-Port $PgPort); $i++) { Start-Sleep -Milliseconds 500 }
 }
 if (-not (Test-Port $PgPort)) { Warn ('PostgreSQL 没起来，看 ' + (Join-Path $TargetRoot 'logs\postgres.log')); exit 1 }
@@ -303,6 +323,15 @@ if ($adminCode -eq 0) { Ok ('管理员 ' + $AdminUser + ' 就绪') } else { Warn
 Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 
 # ---- 6) 收尾 -----------------------------------------------------------------
+# 图标：桌面快捷方式与网页标签都用它。源头在仓库的 frontend\public\favicon.ico，
+# 便携包要自包含，所以拷一份进包根目录（scripts\create-desktop-shortcut.ps1 会用它）。
+$faviconSource = Join-Path (Split-Path -Parent $PSScriptRoot) 'frontend\public\favicon.ico'
+$faviconTarget = Join-Path $TargetRoot 'favicon.ico'
+if ((Test-Path $faviconSource) -and -not (Test-Path $faviconTarget)) {
+  Copy-Item $faviconSource $faviconTarget -Force
+  Ok '已把 favicon.ico 拷进便携包（桌面图标 / 网页标签用）'
+}
+
 Write-Host ''
 Write-Host '  ✅ 便携包准备完成' -ForegroundColor Green
 Write-Host ('     目录: ' + $TargetRoot) -ForegroundColor White
