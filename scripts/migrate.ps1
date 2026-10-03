@@ -3,6 +3,7 @@
 #   .\scripts\migrate.ps1                      # 用本地构建的迁移工具打 .env 指向的库
 #   .\scripts\migrate.ps1 -InContainer         # 用 docker compose 的 migrate 服务（生产路径）
 #   .\scripts\migrate.ps1 -CreateAdmin alice --AdminEmail alice@example.com
+#   .\scripts\migrate.ps1 -PromoteAdmin klaraljy     # 只把已有账号提为管理员（不需要口令）
 #
 # 管理员口令**只从环境变量读**（默认 INITIAL_ADMIN_PASSWORD），不写进仓库、不落命令行历史。
 param(
@@ -11,6 +12,7 @@ param(
   [string]$CreateAdmin = '',
   [string]$AdminEmail = '',
   [string]$AdminPasswordEnv = 'INITIAL_ADMIN_PASSWORD',
+  [string]$PromoteAdmin = '',
   [switch]$InContainer,
   [ValidateSet('debug', 'release')][string]$Preset = 'debug'
 )
@@ -34,6 +36,10 @@ try {
   if ($CreateAdmin) {
     $args += @('--create-admin', $CreateAdmin, '--admin-password-env', $AdminPasswordEnv)
     if ($AdminEmail) { $args += @('--admin-email', $AdminEmail) }
+  }
+  # 只提升已有账号：工具那边叫 --promote-admin，**不读也不要求任何口令**
+  if ($PromoteAdmin) {
+    $args += @('--promote-admin', $PromoteAdmin)
   }
 
   Write-Host ('==> 执行迁移：' + $exe) -ForegroundColor Cyan

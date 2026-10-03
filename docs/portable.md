@@ -22,20 +22,21 @@
 portable/
 ├── 启动.cmd            # 用户入口：双击 → 打印地址面板 + 自动打开浏览器 + 托盘图标（自动启动服务）
 ├── 停止.cmd            # 停止（数据保留）
+├── 设为管理员.cmd       # 把**已有**账号提升为管理员（不需要口令；用户 2026-10-02 要求）
 ├── favicon.ico         # 桌面快捷方式与网页标签的图标（源头 frontend\public\favicon.ico）
 ├── 使用说明.txt         # 大白话说明（GBK 编码，记事本直接可读）
 ├── README.md           # 面向开发者/维护者
 ├── app/                # ← portable-setup.ps1 生成：后端 exe、迁移工具、migrations、.env、web/
 ├── pgsql/              # ← portable-setup.ps1 下载：EDB 免安装 PostgreSQL
 ├── redis/              # ← portable-setup.ps1 拷贝：Redis for Windows
-├── tools/              # ← portable-setup.ps1 拷贝：tray.ps1、_env.ps1（让便携包自包含）
+├── tools/              # ← portable-setup.ps1 拷贝：tray.ps1、_env.ps1、make-admin.ps1（让便携包自包含）
 ├── data/               # 运行时：data\pg（数据库）、data\redis、data\storage（文件对象）
 └── logs/               # 运行时：backend.log/.err、postgres.log、redis.log、tray 相关
 ```
 
 `.gitignore` 里**逐个列出**了 `app/`、`pgsql/`、`redis/`、`tools/`、`data/`、`logs/`
 （不用通配符 —— 全局 `AGENTS.md` §2.2 记录过 `.gitignore` negation 被父目录规则吃掉的坑）。
-仓库里只提交骨架：两个 `.cmd`、`使用说明.txt`、`README.md`
+仓库里只提交骨架：三个 `.cmd`、`使用说明.txt`、`README.md`
 （`favicon.ico` 由 `portable-setup.ps1` 从 `frontend\public\` 拷进来）。
 
 ## 3. 准备（在开发机上跑一次）

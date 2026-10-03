@@ -3,6 +3,7 @@
 //   lan_file_hub_migrate [--migrations <dir>] [--env-file <path>]
 //                       [--create-admin <username>] [--admin-email <email>]
 //                       [--admin-password-env <VAR>]
+//                       [--promote-admin <username>]
 //
 // 行为：
 //   - 读取 migrations/ 下按文件名排序的 *.sql
@@ -38,6 +39,9 @@ struct Options {
   std::string admin_email;
   // 口令只从环境变量读，绝不接受命令行参数（会进 shell 历史与进程列表）
   std::string admin_password_env{"INITIAL_ADMIN_PASSWORD"};
+  // 只把**已有**用户提升为管理员（用户 2026-10-02 要求）：不需要口令 ——
+  // 自己注册的账号想变成管理员时，不该被迫先设一个临时口令再改回来。
+  std::string promote_username;
 };
 
 Options ParseArgs(int argc, char** argv) {
@@ -54,6 +58,8 @@ Options ParseArgs(int argc, char** argv) {
       options.admin_email = argv[++i];
     } else if (arg == "--admin-password-env" && i + 1 < argc) {
       options.admin_password_env = argv[++i];
+    } else if (arg == "--promote-admin" && i + 1 < argc) {
+      options.promote_username = argv[++i];
     }
   }
   return options;
@@ -218,6 +224,34 @@ int main(int argc, char** argv) {
       }
       tx.commit();
       std::cout << "提示：这是引导口令，登录后请立即修改；仓库中不保存任何默认口令。" << std::endl;
+    }
+
+    // ---- 把已有用户提升为管理员（--promote-admin）----
+    // 与 --create-admin 的区别：**完全不需要口令**，只改 role。
+    if (!options.promote_username.empty()) {
+      pqxx::work tx(connection);
+      pqxx::params find_user;
+      find_user.append(options.promote_username);
+      const pqxx::result found =
+          tx.exec("SELECT id::text AS id, role FROM users WHERE username = $1", find_user);
+      if (found.empty()) {
+        std::cerr << "提升管理员失败：没有找到用户 " << options.promote_username
+                  << "（用户名区分大小写；先让人在注册页建号，或用 --create-admin 新建）"
+                  << std::endl;
+        return 1;
+      }
+      const std::string user_id = found[0]["id"].as<std::string>();
+      if (found[0]["role"].as<std::string>() == "ADMIN") {
+        std::cout << "提升管理员：用户 " << options.promote_username << " 已经是管理员，未改动"
+                  << std::endl;
+      } else {
+        pqxx::params promote;
+        promote.append(user_id);
+        tx.exec("UPDATE users SET role = 'ADMIN', updated_at = now() WHERE id = $1::uuid", promote);
+        std::cout << "提升管理员：已把 " << options.promote_username
+                  << " 提升为管理员（口令未改动）" << std::endl;
+      }
+      tx.commit();
     }
   } catch (const std::exception& ex) {
     std::cerr << "数据库错误: " << ex.what() << std::endl;

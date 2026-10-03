@@ -13,6 +13,7 @@ param(
   [string]$Username = 'admin',
   [string]$Email = '',
   [string]$PasswordEnv = 'INITIAL_ADMIN_PASSWORD',
+  [switch]$PromoteOnly,
   [switch]$NoPrompt,
   [switch]$SkipDeps,
   [ValidateSet('debug', 'release')][string]$Preset = 'debug'
@@ -78,6 +79,16 @@ if (-not $SkipDeps -and -not (Test-Port 5432)) {
 }
 
 # ---- 2) 用户名 / 邮箱 / 口令 ----
+# -PromoteOnly：只把**已有**账号提升为管理员，**不需要口令**（用户 2026-10-02 问的场景：
+# 自己注册的号想变成管理员，不该被迫先设一个临时口令）。走 --promote-admin。
+if ($PromoteOnly) {
+  Step ('只提升已有账号: ' + $Username)
+  & (Join-Path $PSScriptRoot 'migrate.ps1') -PromoteAdmin $Username -Preset $Preset
+  if ($LASTEXITCODE -ne 0) { Warn '没成功，原因见上面的输出'; exit 1 }
+  Write-Host ''
+  Ok ('完成：' + $Username + ' 现在是管理员（口令未改动，重新登录后左侧出现「系统管理」）')
+  exit 0
+}
 $weSetPassword = $false   # 只有交互式输入的口令才由本脚本负责清除
 if (-not $NoPrompt) {
   # stdin 被重定向时 Read-Host 会一直等输入（看起来像卡死），所以直接给用法退出

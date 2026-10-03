@@ -345,6 +345,10 @@ ninja / node / npm / git / docker   已在 PATH
   `.\scripts\create-admin.ps1 -Username admin -Email a@b.c`（口令交互输入、不回显，
   至少 8 位；用户名已存在则**提升为 ADMIN 且不改口令**，已是管理员则幂等跳过）。
   **口令只从环境变量传给工具，不进命令行、不落盘、不进日志**，仓库里不放默认口令。
+- **已有账号提升为管理员**（用户 2026-10-02）：`.\scripts\make-admin.ps1 -Username <账号>`
+  （便携包形态：双击 `设为管理员.cmd`，或 `portable\tools\make-admin.ps1 -Username <账号>`）
+  —— **不需要口令**，只改 `role`，走迁移工具的 `--promote-admin`。
+  ⛔ "第一个注册的人自动变成管理员"是错误设计，这一步必须由人显式执行。
 - **手机 / 其它电脑访问**：前端 vite 必须监听所有网卡（`frontend/vite.config.ts` 里
   `host: true` + `strictPort: true`）——只绑 localhost 时手机连不上（实测踩到过）。
   `start.ps1` 与菜单状态会打印 `📱 手机访问: http://<局域网IP>:5173`。

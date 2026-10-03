@@ -186,10 +186,10 @@ if (Test-Path (Join-Path $DistDir 'index.html')) {
   Warn '还没有前端产物：先在 frontend 里跑 npm run build（便携包网页托管需要它）'
 }
 
-foreach ($script in @('tray.ps1', '_env.ps1')) {
+foreach ($script in @('tray.ps1', '_env.ps1', 'make-admin.ps1')) {
   Copy-Item (Join-Path $ProjectRoot ('scripts\' + $script)) (Join-Path $TargetRoot ('tools\' + $script)) -Force
 }
-Ok '托盘脚本已拷到 tools\'
+Ok '托盘脚本与"设为管理员"脚本已拷到 tools\'
 
 # ---- 4) 生成 .env -------------------------------------------------------------
 Step '生成配置（随机密钥，端口避开开发环境）'
