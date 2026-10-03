@@ -1,14 +1,16 @@
 /**
  * 手机上用的文件卡片列表（AGENTS.md §14.1：手机上"憋屈"是产品缺陷）。
  *
- * 为什么不用宽表格：表格有 5 列 + 一行 7 个操作按钮，手机宽度下必然横向溢出、按钮点不准。
- * 这里一条文件一张卡片：**名称 + 大小/类型/时间 + 一行操作**，
- * 其中「发送给…」保持**显眼的主按钮**（AGENTS.md §14.3 用户明确要求），
- * 其余操作（下载/详情/版本/分享/权限/删除）收进「更多」下拉。
+ * 为什么不用宽表格：表格有一行七个操作按钮，手机宽度下必然横向溢出、按钮点不准。
+ * 这里一条文件一张卡片：**名称 + 大小/类型/时间 + 一行操作**。
+ *
+ * 2026-10-03 用户投诉"手机端一大个发送给按钮，我的下载按钮呢"之后的排版：
+ *   **主按钮 = 这一行最常用的动作**（文件=下载、文件夹=打开），占满一行、44px 高；
+ *   下面是「发送给…」（次要按钮，仍然在行上，不违反 AGENTS §14.3）和「更多」。
  *
  * 只负责渲染与转发点击，不自己发请求（与 FileGrid 的约定一致）。
  */
-import { App as AntApp, Button, Card, Dropdown, Empty, Typography } from 'antd';
+import { App as AntApp, Button, Card, Dropdown, Empty, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DeleteOutlined,
@@ -28,7 +30,22 @@ import {
 
 import { FileThumbnail } from './FileThumbnail';
 import { formatBytes, typeLabel, type BrowseRow } from '../features/files/listView';
+import { rowActions, type RowActionKey } from '../features/files/rowActions';
+import { canPreview } from '../services/filePreview';
 import { TOUCH_HEIGHT } from '../hooks/useIsMobile';
+
+const ACTION_ICONS: Record<RowActionKey, React.ReactNode> = {
+  open: <FolderOpenOutlined />,
+  download: <DownloadOutlined />,
+  preview: <EyeOutlined />,
+  detail: <InfoCircleOutlined />,
+  versions: <HistoryOutlined />,
+  send: <SendOutlined />,
+  share: <ShareAltOutlined />,
+  permission: <TeamOutlined />,
+  rename: <EditOutlined />,
+  delete: <DeleteOutlined />,
+};
 
 interface Props {
   rows: BrowseRow[];
@@ -87,40 +104,39 @@ export function FileCardList({
   }
 
   function moreItems(row: BrowseRow): MenuProps['items'] {
-    const items: MenuProps['items'] =
-      row.kind === 'file'
-        ? [
-            { key: 'preview', icon: <EyeOutlined />, label: '预览' },
-            { key: 'download', icon: <DownloadOutlined />, label: '下载' },
-            { key: 'detail', icon: <InfoCircleOutlined />, label: '详情' },
-            { key: 'versions', icon: <HistoryOutlined />, label: '版本历史' },
-          ]
-        : [
-            { key: 'open', icon: <FolderOpenOutlined />, label: '打开' },
-            { key: 'rename', icon: <EditOutlined />, label: '重命名' },
-          ];
-    return [
-      ...items,
-      { key: 'share', icon: <ShareAltOutlined />, label: '分享' },
-      { key: 'permission', icon: <TeamOutlined />, label: '权限' },
-      { type: 'divider' },
-      { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true },
-    ];
+    const set = rowActions(row.kind, {
+      canPreview: row.kind === 'file' && canPreview(row.file.mime_type, row.name),
+    });
+    return set.menu.map((action) => ({
+      key: action.key,
+      icon: ACTION_ICONS[action.key],
+      label: action.label,
+      danger: action.danger,
+    }));
   }
 
-  function handleMore(row: BrowseRow, key: string) {
+  /** 行上的按钮：主按钮（下载/打开）+「发送给…」的点击都从这里走 */
+  function dispatch(row: BrowseRow, key: RowActionKey) {
+    if (key === 'delete') {
+      confirmDelete(row);
+      return;
+    }
     if (row.kind === 'file') {
-      if (key === 'preview') onPreview(row);
       if (key === 'download') onDownload(row);
+      if (key === 'preview') onPreview(row);
       if (key === 'detail') onDetail(row);
       if (key === 'versions') onVersions(row);
     } else {
       if (key === 'open') onOpenFolder(row);
       if (key === 'rename') onRename(row);
     }
+    if (key === 'send') onSend(row);
     if (key === 'share') onShare(row);
     if (key === 'permission') onPermission(row);
-    if (key === 'delete') confirmDelete(row);
+  }
+
+  function handleMore(row: BrowseRow, key: string) {
+    dispatch(row, key as RowActionKey);
   }
 
   return (
@@ -170,28 +186,39 @@ export function FileCardList({
 
           {/* 操作区：点按钮不应该同时触发"打开卡片"，所以这里阻止冒泡 */}
           <div
-            style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}
             onClick={(event) => event.stopPropagation()}
           >
-            {/* 主操作：按人发送（AGENTS.md §14.3）。手机上必须是显眼的大按钮 */}
+            {/* 主按钮：这一行最常用的动作（文件=下载、文件夹=打开），占满一行最好点 */}
             <Button
               type="primary"
-              icon={<SendOutlined />}
-              style={{ flex: 1, height: TOUCH_HEIGHT }}
-              onClick={() => onSend(row)}
+              block
+              icon={row.kind === 'file' ? <DownloadOutlined /> : <FolderOpenOutlined />}
+              style={{ height: TOUCH_HEIGHT }}
+              onClick={() => dispatch(row, row.kind === 'file' ? 'download' : 'open')}
             >
-              发送给…
+              {row.kind === 'file' ? '下载' : '打开'}
             </Button>
-            <Dropdown
-              trigger={['click']}
-              menu={{ items: moreItems(row), onClick: ({ key }) => handleMore(row, key) }}
-            >
+            <Space size={8} style={{ width: '100%', justifyContent: 'space-between' }}>
+              {/* 「发送给…」仍在行上（AGENTS §14.3 不许藏进"更多"），但不再抢占主按钮 */}
               <Button
-                aria-label={`更多操作：${row.name}`}
-                icon={<MoreOutlined />}
-                style={{ height: TOUCH_HEIGHT, minWidth: TOUCH_HEIGHT }}
-              />
-            </Dropdown>
+                icon={<SendOutlined />}
+                style={{ height: TOUCH_HEIGHT }}
+                onClick={() => onSend(row)}
+              >
+                发送给…
+              </Button>
+              <Dropdown
+                trigger={['click']}
+                menu={{ items: moreItems(row), onClick: ({ key }) => handleMore(row, key) }}
+              >
+                <Button
+                  aria-label={`更多操作：${row.name}`}
+                  icon={<MoreOutlined />}
+                  style={{ height: TOUCH_HEIGHT, minWidth: TOUCH_HEIGHT }}
+                />
+              </Dropdown>
+            </Space>
           </div>
         </Card>
       ))}

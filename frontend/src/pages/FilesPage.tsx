@@ -19,7 +19,6 @@ import {
   Empty,
   Form,
   Input,
-  Popconfirm,
   Segmented,
   Space,
   Spin,
@@ -30,27 +29,16 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   AppstoreOutlined,
-  DeleteOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  EyeOutlined,
   FileOutlined,
-  FolderOpenOutlined,
   FolderOutlined,
-  HistoryOutlined,
-  InfoCircleOutlined,
   PlusOutlined,
   PartitionOutlined,
   CloudUploadOutlined,
   ReloadOutlined,
   SearchOutlined,
-  SendOutlined,
-  ShareAltOutlined,
   SortAscendingOutlined,
-  TeamOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { canPreview } from '../services/filePreview';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { FileCardList } from '../components/FileCardList';
@@ -64,12 +52,14 @@ import { ResponsiveSheet } from '../components/ResponsiveSheet';
 import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { FolderTree } from '../components/FolderTree';
+import { RowActions } from '../components/RowActions';
+import { canPreview } from '../services/filePreview';
+import type { RowActionKey } from '../features/files/rowActions';
 import { VersionHistoryModal } from '../components/VersionHistoryModal';
 import { fileErrorMessage, useDownloadFile, useFolderFiles } from '../features/files/useFiles';
 import {
   DEFAULT_SORT,
-  SORT_FIELDS,
-  SORT_FIELD_LABELS,
+  SORT_FIELDS,  SORT_FIELD_LABELS,
   buildBrowseRows,
   filterRows,
   formatBytes,
@@ -266,6 +256,52 @@ export function FilesPage() {
     }
   }
 
+  /**
+   * 行内操作统一入口（2026-10-03）：三个视图都走 `features/files/rowActions.ts` 定义的那套动作，
+   * 这里只把 key 映射到本页已有的弹窗 / 请求，避免"表格有、手机没有"。
+   */
+  function handleRowAction(row: BrowseRow, key: RowActionKey) {
+    if (key === 'open' && row.kind === 'folder') {
+      navigate(`/files/${row.folder.id}`);
+      return;
+    }
+    if (key === 'rename' && row.kind === 'folder') {
+      openRename(row.folder);
+      return;
+    }
+    if (key === 'download' && row.kind === 'file') {
+      void handleDownload(row.file);
+      return;
+    }
+    if (key === 'preview' && row.kind === 'file') {
+      setPreviewTarget(row.file);
+      return;
+    }
+    if (key === 'detail' && row.kind === 'file') {
+      setDetailTarget(row.file);
+      return;
+    }
+    if (key === 'versions' && row.kind === 'file') {
+      setVersionTarget(row.file);
+      return;
+    }
+    if (key === 'send') {
+      setSendTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder });
+      return;
+    }
+    if (key === 'share') {
+      setShareTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder });
+      return;
+    }
+    if (key === 'permission') {
+      setPermTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder });
+      return;
+    }
+    if (key === 'delete') {
+      handleRowDelete(row);
+    }
+  }
+
   const columns: ColumnsType<BrowseRow> = [
     {
       title: '名称',
@@ -309,148 +345,15 @@ export function FilesPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 260,
-      render: (_value, row) => {
-        if (row.kind === 'file') {
-          return (
-            <Space wrap size={0}>
-              <Button
-                type="link"
-                size="small"
-                icon={<DownloadOutlined />}
-                loading={downloadMutation.isPending}
-                onClick={() => void handleDownload(row.file)}
-              >
-                下载
-              </Button>
-              {canPreview(row.file.mime_type, row.file.name) && (
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => setPreviewTarget(row.file)}
-                >
-                  预览
-                </Button>
-              )}
-              <Button
-                type="link"
-                size="small"
-                icon={<InfoCircleOutlined />}
-                onClick={() => setDetailTarget(row.file)}
-              >
-                详情
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                icon={<HistoryOutlined />}
-                onClick={() => setVersionTarget(row.file)}
-              >
-                版本历史
-              </Button>
-              {/* 主操作：按人发送（AGENTS.md §14.3），放在最显眼的位置 */}
-              <Button
-                type="primary"
-                size="small"
-                icon={<SendOutlined />}
-                onClick={() => setSendTarget({ file: row.file })}
-              >
-                发送给…
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                icon={<ShareAltOutlined />}
-                onClick={() => setShareTarget({ file: row.file })}
-              >
-                分享
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                icon={<TeamOutlined />}
-                onClick={() => setPermTarget({ file: row.file })}
-              >
-                权限
-              </Button>
-              {/* 软删除：进回收站，可恢复 */}
-              <Popconfirm
-                title={`删除「${row.file.name}」？`}
-                description="文件会移入回收站，可以恢复。"
-                okText="删除"
-                okButtonProps={{ danger: true }}
-                cancelText="取消"
-                onConfirm={() => void handleDeleteFile(row.file)}
-              >
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                  删除
-                </Button>
-              </Popconfirm>
-            </Space>
-          );
-        }
-        return (
-          <Space wrap size={0}>
-            {/* 「打开」放最前面：进文件夹是查看结构/往里加文件的唯一入口，不能只靠点名字
-                （2026-10-03 用户反馈"我不可以去查看文件结构的吗"） */}
-            <Button
-              type="primary"
-              size="small"
-              icon={<FolderOpenOutlined />}
-              onClick={() => navigate(`/files/${row.folder.id}`)}
-            >
-              打开
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => openRename(row.folder)}
-            >
-              重命名
-            </Button>
-            {/* 主操作：按人发送（文件夹同样支持，AGENTS.md §14.3） */}
-            <Button
-              type="primary"
-              size="small"
-              icon={<SendOutlined />}
-              onClick={() => setSendTarget({ folder: row.folder })}
-            >
-              发送给…
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<ShareAltOutlined />}
-              onClick={() => setShareTarget({ folder: row.folder })}
-            >
-              分享
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<TeamOutlined />}
-              onClick={() => setPermTarget({ folder: row.folder })}
-            >
-              权限
-            </Button>
-            {/* 破坏性操作必须二次确认（docs/frontend.md） */}
-            <Popconfirm
-              title={`删除「${row.folder.name}」？`}
-              description="该目录及其子目录会移入回收站，可在回收站恢复。"
-              okText="删除"
-              okButtonProps={{ danger: true }}
-              cancelText="取消"
-              onConfirm={() => void handleDeleteFolder(row.folder)}
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
-        );
-      },
+      // 统一成一列「主按钮 + 发送给… + 更多」（2026-10-03 用户投诉一行七个按钮太乱）
+      width: 240,
+      render: (_value, row) => (
+        <RowActions
+          kind={row.kind}
+          canPreview={row.kind === 'file' && canPreview(row.file.mime_type, row.file.name)}
+          onAction={(key) => handleRowAction(row, key)}
+        />
+      ),
     },
   ];
 

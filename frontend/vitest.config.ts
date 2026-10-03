@@ -6,5 +6,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['tests/**/*.test.{ts,tsx}'],
+    // 组件测试要真的渲染 AntD（`tests/rowActionsView.test.tsx`），垫片见 tests/setup.ts
+    setupFiles: ['./tests/setup.ts'],
   },
 });
