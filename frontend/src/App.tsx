@@ -16,6 +16,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SharedWithMePage } from './pages/SharedWithMePage';
 import { TrashPage } from './pages/TrashPage';
+import { UploadPage } from './pages/UploadPage';
 
 /** 受保护路由：未登录跳登录页，并记住来源以便登录后返回 */
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -82,6 +83,8 @@ export default function App() {
       >
         <Route path="/files" element={<FilesPage />} />
         <Route path="/files/:folderId" element={<FilesPage />} />
+        {/* 上传单独一页（2026-10-03 用户要求：上传与「我的文件」分成两个入口） */}
+        <Route path="/upload" element={<UploadPage />} />
         {/* 手机底部 Tab 的第三个入口：最近文件/回收站/设置/退出登录都收在这里 */}
         <Route path="/me" element={<MyPage />} />
         {/* 广场：谁在线、直接发文件给他（阶段 ⑤） */}

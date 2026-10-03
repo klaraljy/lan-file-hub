@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from 'react';
 import {
+  CloudUploadOutlined,
   FolderOutlined,
   ShareAltOutlined,
   TeamOutlined,
@@ -20,6 +21,7 @@ import { MOBILE_TABS, mobileTabForPath, type MobileTab } from './navigation';
 
 const ICONS: Record<MobileTab['icon'], ReactNode> = {
   folder: <FolderOutlined />,
+  upload: <CloudUploadOutlined />,
   plaza: <TeamOutlined />,
   share: <ShareAltOutlined />,
   user: <UserOutlined />,

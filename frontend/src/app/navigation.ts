@@ -9,11 +9,14 @@ export interface NavItem {
   key: string;
   label: string;
   /** 菜单项对应的图标名，由 AppLayout 映射成组件（这里不引入 React，保持纯数据） */
-  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin' | 'plaza' | 'search';
+  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin' | 'plaza' | 'search' | 'upload';
 }
 
 export const MAIN_NAV_ITEMS: readonly NavItem[] = [
   { key: '/files', label: '我的文件', icon: 'folder' },
+  // 上传单独一个入口（2026-10-03 用户要求：「把上传文件和我的文件分开来换成两个目录做」）：
+  // 「我的文件」只管浏览与管理，上传区不再挤在文件列表上面
+  { key: '/upload', label: '上传文件', icon: 'upload' },
   // 搜索（2026-10-03，用户要求：文件一多就得能找到东西）
   { key: '/search', label: '搜索', icon: 'search' },
   // 广场：谁在线、直接发文件给他（阶段 ⑤，用户 2026-09-21 要求）
@@ -63,7 +66,7 @@ export interface MobileTab {
   /** 点这个 Tab 去哪个路径 */
   key: string;
   label: string;
-  icon: 'folder' | 'share' | 'user' | 'plaza';
+  icon: 'folder' | 'share' | 'user' | 'plaza' | 'upload';
   /** 哪些路径算在这个 Tab 下（用于高亮）；前缀匹配带斜杠边界 */
   matches: readonly string[];
 }
@@ -73,9 +76,11 @@ export interface MobileTab {
  *
  * 「最近文件 / 回收站 / 设置 / 系统管理 / 退出登录」都收进「我的」页，
  * 顶栏因此不再需要汉堡菜单——这也是用户反馈"憋屈"的主要来源。
+ * 2026-10-03：上传拆成独立入口后，手机上同样给它一个 Tab（与桌面左侧一致）。
  */
 export const MOBILE_TABS: readonly MobileTab[] = [
   { key: '/files', label: '文件', icon: 'folder', matches: ['/files'] },
+  { key: '/upload', label: '上传', icon: 'upload', matches: ['/upload'] },
   // 广场（阶段 ⑤）：谁在线、直接发文件给他
   { key: '/plaza', label: '广场', icon: 'plaza', matches: ['/plaza'] },
   { key: '/shared', label: '分享给我的', icon: 'share', matches: ['/shared'] },

@@ -41,6 +41,7 @@ import {
   InfoCircleOutlined,
   PlusOutlined,
   PartitionOutlined,
+  CloudUploadOutlined,
   ReloadOutlined,
   SearchOutlined,
   SendOutlined,
@@ -62,10 +63,8 @@ import { PermissionDialog } from '../components/PermissionDialog';
 import { ResponsiveSheet } from '../components/ResponsiveSheet';
 import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
-import { UploadPanel } from '../components/UploadPanel';
 import { FolderTree } from '../components/FolderTree';
 import { VersionHistoryModal } from '../components/VersionHistoryModal';
-import { useAuth } from '../features/auth/AuthContext';
 import { fileErrorMessage, useDownloadFile, useFolderFiles } from '../features/files/useFiles';
 import {
   DEFAULT_SORT,
@@ -128,7 +127,6 @@ export function writeTreePreference(visible: boolean): void {
 }
 
 export function FilesPage() {
-  const { user } = useAuth();
   const { message } = AntApp.useApp();
   const navigate = useNavigate();
   const params = useParams<{ folderId?: string }>();
@@ -530,6 +528,15 @@ export function FilesPage() {
         <Button icon={<PlusOutlined />} onClick={openCreate} disabled={!currentId}>
           新建文件夹
         </Button>
+        {/* 上传独立成页（2026-10-03）：这里只留一个入口，把当前目录带过去 */}
+        <Button
+          type="primary"
+          icon={<CloudUploadOutlined />}
+          onClick={() => navigate(currentId ? `/upload?folder=${currentId}` : '/upload')}
+          disabled={!currentId}
+        >
+          上传到这里
+        </Button>
         {/* 左侧目录树（2026-10-03 用户要求）：像资源管理器那样看整个结构，手机上不提供 */}
         {!isMobile && (
           <Button
@@ -588,10 +595,8 @@ export function FilesPage() {
         )}
       </div>
 
-      <UploadPanel folderId={currentId} disabled={!user} />
-
-      {state === 'idle' && (
-        <Empty
+      {/* 上传区已独立成页（2026-10-03 用户要求）：这里只留工具栏里的「上传到这里」入口 */}
+      {state === 'idle' && (        <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={pageStateMessage('idle')}
         />
@@ -657,7 +662,7 @@ export function FilesPage() {
                 description={
                   keyword.trim()
                     ? '当前页没有匹配的名称'
-                    : '这个文件夹还是空的：把文件拖到上面的上传区，或点「选择文件夹上传」'
+                    : '这个文件夹还是空的：点上面的「上传到这里」传文件进来'
                 }
               />
             ),

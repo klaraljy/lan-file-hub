@@ -11,16 +11,17 @@ import {
 } from '../src/app/navigation';
 
 /**
- * 左侧导航是七个入口（阶段 ⑤ 加了「广场」，2026-10-03 加了「搜索」），高亮规则必须稳定：
- * 目录详情页也要算「我的文件」，前缀相近的路径不能被误判。
+ * 左侧导航是八个入口（阶段 ⑤ 加了「广场」，2026-10-03 加了「搜索」与「上传文件」），
+ * 高亮规则必须稳定：目录详情页也要算「我的文件」，前缀相近的路径不能被误判。
  */
 describe('selectedNavKey', () => {
-  it('七个入口本身都能高亮自己', () => {
+  it('八个入口本身都能高亮自己', () => {
     for (const item of MAIN_NAV_ITEMS) {
       expect(selectedNavKey(item.key)).toBe(item.key);
     }
     expect(MAIN_NAV_ITEMS.map((item) => item.key)).toEqual([
       '/files',
+      '/upload',
       '/search',
       '/plaza',
       '/recent',
@@ -28,6 +29,15 @@ describe('selectedNavKey', () => {
       '/trash',
       '/settings',
     ]);
+  });
+
+  it('上传页与「我的文件」是两个独立入口（用户 2026-10-03 要求分开）', () => {
+    expect(selectedNavKey('/upload')).toBe('/upload');
+    expect(selectedNavKey('/upload?folder=abc')).toBe('/upload');
+    expect(selectedNavKey('/files/8f1c-2b')).toBe('/files');
+    // 前缀相近的不能被误判
+    expect(selectedNavKey('/uploads')).toBe('');
+    expect(selectedNavKey('/upload-old')).toBe('');
   });
 
   it('进入子目录时仍然是「我的文件」高亮', () => {
@@ -69,6 +79,7 @@ describe('navItemsForRole', () => {
     const items = navItemsForRole('ADMIN');
     expect(items.map((item) => item.key)).toEqual([
       '/files',
+      '/upload',
       '/search',
       '/plaza',
       '/recent',
@@ -95,14 +106,26 @@ describe('navItemsForRole', () => {
 /**
  * 手机底部 Tab（AGENTS.md §15 阶段 ②/⑤）：手机上导航的主入口。
  * 「最近文件 / 回收站 / 设置 / 系统管理」都算在「我的」Tab 下；
- * 阶段 ⑤ 起多了第 2 个 Tab「广场」（谁在线、直接发文件给他）。
+ * 阶段 ⑤ 起多了「广场」；2026-10-03 上传拆分后多了「上传」（与桌面左侧一致）。
  */
 describe('mobileTabForPath', () => {
-  it('四个 Tab 各自能高亮自己', () => {
-    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(['/files', '/plaza', '/shared', '/me']);
+  it('五个 Tab 各自能高亮自己', () => {
+    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
+      '/files',
+      '/upload',
+      '/plaza',
+      '/shared',
+      '/me',
+    ]);
     for (const tab of MOBILE_TABS) {
       expect(mobileTabForPath(tab.key)).toBe(tab.key);
     }
+  });
+
+  it('上传 Tab 不跟「文件」混在一起', () => {
+    expect(mobileTabForPath('/upload')).toBe('/upload');
+    expect(mobileTabForPath('/upload?folder=abc')).toBe('/upload');
+    expect(mobileTabForPath('/files/8f1c-2b')).toBe('/files');
   });
 
   it('广场 Tab 有自己的路径，不会被当成「文件」', () => {

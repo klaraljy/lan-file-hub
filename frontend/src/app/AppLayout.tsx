@@ -14,6 +14,7 @@
 import { Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
   ClockCircleOutlined,
+  CloudUploadOutlined,
   DeleteOutlined,
   FolderOutlined,
   SearchOutlined,
@@ -35,6 +36,7 @@ const { Header, Sider, Content } = Layout;
 
 const ICONS: Record<NavItem['icon'], ReactNode> = {
   folder: <FolderOutlined />,
+  upload: <CloudUploadOutlined />,
   search: <SearchOutlined />,
   clock: <ClockCircleOutlined />,
   share: <ShareAltOutlined />,
