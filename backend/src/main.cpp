@@ -138,6 +138,7 @@ int main(int /*argc*/, char** /*argv*/) {
   context->cleanup_tasks = std::make_shared<CleanupTaskRepository>(*context->pool);
   context->permissions_repo = std::make_shared<PermissionRepository>(*context->pool);
   context->shares = std::make_shared<ShareLinkRepository>(*context->pool);
+  context->invites_repo = std::make_shared<InviteRepository>(*context->pool);
   context->password_hasher = std::make_shared<PasswordHasher>();
   context->jwt = std::make_shared<JwtService>(
       JwtOptions{config.jwt_secret, config.jwt_expire_seconds, "lan-file-hub"});
@@ -173,6 +174,12 @@ int main(int /*argc*/, char** /*argv*/) {
   context->sharing_service = std::make_shared<SharingService>(
       *context->permissions_repo, *context->shares, *context->files, *context->folders,
       *context->users, *context->audit, *context->storage, *context->permissions);
+  // 邀请制注册（用户 2026-10-02）：ALLOW_SELF_REGISTRATION=false 时注册必须带有效邀请
+  context->invites = std::make_shared<InviteService>(*context->invites_repo);
+  context->allow_self_registration = config.allow_self_registration;
+  if (!config.allow_self_registration) {
+    spdlog::info("自助注册已关闭（ALLOW_SELF_REGISTRATION=false）：注册需要管理员发的邀请链接");
+  }
   // 后台清理：过期回收站 + 对象异步删除（阶段八），阶段十一继续扩展
   context->cleanup_service =
       std::make_shared<CleanupService>(*context->cleanup_tasks, *context->files, *context->storage,

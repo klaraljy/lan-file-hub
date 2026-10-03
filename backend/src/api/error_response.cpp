@@ -27,6 +27,11 @@ drogon::HttpStatusCode HttpStatusForErrorCode(std::string_view code) {
     return drogon::k401Unauthorized;
   if (code == "FORBIDDEN")
     return drogon::k403Forbidden;
+  // 邀请制注册（2026-10-02）：关掉自助注册后缺邀请 → 403；邀请不可用 → 400
+  if (code == "INVITE_REQUIRED")
+    return drogon::k403Forbidden;
+  if (code == "INVITE_INVALID")
+    return drogon::k400BadRequest;
   if (code == "RESOURCE_NOT_FOUND")
     return drogon::k404NotFound;
   if (code == "FILE_NOT_FOUND")

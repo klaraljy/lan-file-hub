@@ -32,6 +32,7 @@ add_library(lan_file_hub_core STATIC
   src/infrastructure/audit_repository.cpp
   src/infrastructure/trash_repository.cpp
   src/infrastructure/permission_repository.cpp
+  src/infrastructure/invite_repository.cpp
   # storage
   src/storage/object_storage.cpp
   src/storage/local_object_storage.cpp
@@ -49,6 +50,7 @@ add_library(lan_file_hub_core STATIC
   src/application/cleanup_service.cpp
   src/application/sharing_service.cpp
   src/application/user_directory.cpp
+  src/application/invite_service.cpp
   # api
   src/api/error_response.cpp
   src/api/json_body.cpp
@@ -68,6 +70,7 @@ add_library(lan_file_hub_core STATIC
   src/api/user_lookup_controller.cpp
   src/api/presence_controller.cpp
   src/api/system_controller.cpp
+  src/api/invite_controller.cpp
   src/api/web_hosting.cpp
   src/api/request_id_middleware.cpp
   src/api/security_headers.cpp

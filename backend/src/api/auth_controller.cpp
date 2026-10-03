@@ -12,6 +12,7 @@
 #include "lan_file_hub/application/app_context.h"
 #include "lan_file_hub/common/rate_limiter.h"
 #include "lan_file_hub/common/request_id.h"
+#include "lan_file_hub/infrastructure/invite_repository.h"
 
 namespace lan_file_hub {
 namespace {
@@ -77,10 +78,43 @@ void AuthController::Register(const drogon::HttpRequestPtr& req,
   request.email = ReadStringField(body.Value(), "email");
   request.password = ReadStringField(body.Value(), "password");
 
+  // 邀请制注册（用户 2026-10-02）：关掉自助注册后**必须**带有效邀请；
+  // 开着自助注册时也接受邀请（便于统计"这个人是被谁邀请来的"），邀请无效就当作没用邀请。
+  const std::string invite_token = ReadStringField(body.Value(), "invite_token");
+  std::optional<Invite> consumed_invite;
+  if (!invite_token.empty() || !context->allow_self_registration) {
+    if (invite_token.empty()) {
+      RespondError(callback, Error{"INVITE_REQUIRED",
+                                   "本实例已关闭自助注册，请让管理员发一条邀请链接给你"});
+      return;
+    }
+    if (!context->invites) {
+      RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+      return;
+    }
+    auto consumed = context->invites->Consume(invite_token);
+    if (!consumed) {
+      RespondError(callback, consumed.GetError());
+      return;
+    }
+    consumed_invite = consumed.Value();
+  }
+
   auto result = context->auth->Register(request);
   if (!result) {
+    // 注册失败要把刚消耗的那次还回去，否则用户填错一次就白白少一次机会
+    if (consumed_invite.has_value() && context->invites) {
+      (void)context->invites->Release(invite_token);
+    }
     RespondError(callback, result.GetError());
     return;
+  }
+
+  if (consumed_invite.has_value()) {
+    // 只记 id 与哈希前缀，**不记 token 明文**（与分享链接同口径）
+    spdlog::info("邀请注册成功 | invite_id={} | token_ref={} | username={}",
+                 consumed_invite->id, HashInviteToken(invite_token).substr(0, 8),
+                 result.Value().user.username);
   }
 
   // 只记录用户名，不记录口令或 Token

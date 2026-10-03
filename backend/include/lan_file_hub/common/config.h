@@ -69,6 +69,11 @@ struct AppConfig {
   std::uint64_t download_rate_limit_bytes_per_second{0};  // 0 = 不限速
   std::vector<std::string> cors_allowed_origins{"http://localhost:5173"};
 
+  // 邀请制注册（用户 2026-10-02）：true = 任何人都能自助注册（个人自用方便）；
+  // false = 只有带**有效邀请**的人才能注册（公司/对外场景），注册接口否则返回
+  // 403 INVITE_REQUIRED。见 docs/security.md「邀请制注册」。
+  bool allow_self_registration{true};
+
   [[nodiscard]] bool IsProduction() const { return app_env == "production"; }
 };
 

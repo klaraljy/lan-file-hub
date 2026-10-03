@@ -56,6 +56,8 @@ API 必须支持：
 | `UNAUTHENTICATED` | 未提供凭证或凭证无效，受保护接口的身份校验未通过。 |
 | `TOKEN_EXPIRED` | Token 已过期，需要重新认证。 |
 | `FORBIDDEN` | 身份有效但缺少所需权限：资源权限不足、不是该上传会话的所有者、非管理员访问管理员接口。 |
+| `INVITE_REQUIRED` | 该实例已关闭自助注册（`ALLOW_SELF_REGISTRATION=false`），而注册请求没有带邀请参数。返回 HTTP 403。 |
+| `INVITE_INVALID` | 邀请不可用：已过期、次数用完或已被撤销。返回 HTTP 400。（**token 根本不存在**时用 `RESOURCE_NOT_FOUND`，两者分开是为了不让外部枚举"哪条邀请还在"。） |
 | `RESOURCE_NOT_FOUND` | 请求的通用资源不存在，例如用户、权限记录、分享链接。 |
 | `RESOURCE_CONFLICT` | 通用资源冲突，例如同一父目录下名称重复、重复创建。 |
 | `FILE_NOT_FOUND` | 指定 `file_id` 的文件不存在；对象丢失时同样返回明确错误并记录日志。 |
@@ -797,6 +799,49 @@ POST /api/v1/resources/{resource_id}/shares
 - `permission` 只能是 `READ` 或 `WRITE`（分享链接上不提供 OWNER）。
 - `expires_in_seconds` 最长 365 天；`max_downloads` 必须大于 0；两者都可省略（不过期、不限次）。
 - 撤销：`DELETE /api/v1/shares/{share_id}`，幂等；只有分享创建者或资源所有者能撤销。
+
+## 邀请端点（邀请制注册，2026-10-02 新增）
+
+用户要求：**不是所有人都能注册，要通过管理员邀请**。默认仍允许自助注册（个人自用方便），
+把 `.env` 的 `ALLOW_SELF_REGISTRATION` 设成 `false` 之后，注册就必须带一条有效邀请。
+
+```text
+POST   /api/v1/admin/invites                 建邀请（ADMIN）
+GET    /api/v1/admin/invites                 列出邀请（ADMIN）
+DELETE /api/v1/admin/invites/{invite_id}     撤销（ADMIN，幂等）
+GET    /api/v1/public/invites/{token}        校验邀请（公开，注册页用）
+GET    /api/v1/public/registration-policy    当前是否允许自助注册（公开）
+```
+
+**建邀请**：请求体 `{ "note": "给小王", "expires_in_seconds": 604800, "max_uses": 1 }`
+（都可省略；`expires_in_seconds` 5 分钟–1 年，省略 = 不过期；`max_uses` 1–1000，默认 1）。
+
+```json
+{
+  "data": {
+    "invite": { "id": "uuid", "note": "给小王", "created_at": "2026-10-02T12:00:00Z",
+                "expires_at": "2026-10-09T12:00:00Z", "max_uses": 1, "used_count": 0,
+                "remaining_uses": 1, "revoked_at": null },
+    "token": "只在这一次返回的明文"
+  },
+  "request_id": "uuid"
+}
+```
+
+- ⛔ **`token` 明文只在这里返回一次**：库里只存 `token_hash`（SHA-256），之后任何接口都取不回来
+  —— 与分享链接同一条口径（`docs/security.md`）。
+- 列表接口**不含 token**，只给状态（`used_count` / `remaining_uses` / `expires_at` / `revoked_at`）。
+- 非管理员调用 → `403 FORBIDDEN`；日志只记 `invite_id` 与 token 哈希前缀，**不记明文**。
+
+**公开校验**：`GET /api/v1/public/invites/{token}` → `{ "note", "expires_at", "remaining_uses" }`；
+token 不存在 → `404 RESOURCE_NOT_FOUND`，过期/用完/撤销 → `400 INVITE_INVALID`。
+
+**注册**：`POST /api/v1/auth/register` 新增可选字段 `invite_token`。
+
+- 关闭自助注册时缺它 → `403 INVITE_REQUIRED`；给了但无效 → `400 INVITE_INVALID`。
+- 开着自助注册时也接受它（便于知道"这个人是被谁邀请来的"），无效则当作没带。
+- 消耗是**一条原子 UPDATE**（`used_count < max_uses AND 未撤销 AND 未过期`），并发下不会用超；
+  注册失败（例如用户名被占用）会把次数**归还**，不白吃一次。
 
 ## 用户名录端点（按人分享，2026-09-21 新增）
 

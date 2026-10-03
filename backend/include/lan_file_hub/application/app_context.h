@@ -12,6 +12,7 @@
 #include "lan_file_hub/application/file_scanner.h"
 #include "lan_file_hub/application/file_service.h"
 #include "lan_file_hub/application/folder_service.h"
+#include "lan_file_hub/application/invite_service.h"
 #include "lan_file_hub/application/permission_checker.h"
 #include "lan_file_hub/application/presence_registry.h"
 #include "lan_file_hub/application/sharing_service.h"
@@ -23,6 +24,7 @@
 #include "lan_file_hub/infrastructure/database.h"
 #include "lan_file_hub/infrastructure/file_repository.h"
 #include "lan_file_hub/infrastructure/folder_repository.h"
+#include "lan_file_hub/infrastructure/invite_repository.h"
 #include "lan_file_hub/infrastructure/jwt_service.h"
 #include "lan_file_hub/infrastructure/password_hasher.h"
 #include "lan_file_hub/infrastructure/permission_repository.h"
@@ -45,6 +47,8 @@ struct AppContext {
   std::shared_ptr<CleanupTaskRepository> cleanup_tasks;
   std::shared_ptr<PermissionRepository> permissions_repo;
   std::shared_ptr<ShareLinkRepository> shares;
+  // 邀请（用户 2026-10-02：邀请制注册）
+  std::shared_ptr<InviteRepository> invites_repo;
 
   // 基础设施服务
   std::shared_ptr<PasswordHasher> password_hasher;
@@ -61,6 +65,10 @@ struct AppContext {
   std::shared_ptr<UploadService> uploads_service;
   std::shared_ptr<TrashService> trash_service;
   std::shared_ptr<SharingService> sharing_service;
+  // 邀请业务规则（建/查/撤销/消耗/归还）
+  std::shared_ptr<InviteService> invites;
+  // 是否允许自助注册（来自 ALLOW_SELF_REGISTRATION；false 时注册必须带有效邀请）
+  bool allow_self_registration{true};
   // 后台清理（过期回收站 + 对象异步删除），进程退出时有序停止
   std::shared_ptr<CleanupService> cleanup_service;
 

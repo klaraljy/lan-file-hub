@@ -26,6 +26,7 @@ add_executable(lan_file_hub_unit_tests
   unit/metrics_test.cpp
   unit/net_test.cpp
   unit/presence_registry_test.cpp
+  unit/invite_test.cpp
 )
 
 target_include_directories(lan_file_hub_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -48,6 +49,7 @@ add_executable(lan_file_hub_integration_tests
   integration/sharing_flow_test.cpp
   integration/admin_flow_test.cpp
   integration/user_directory_test.cpp
+  integration/invite_flow_test.cpp
   integration/fault_injection_test.cpp
 )
 

@@ -227,6 +227,19 @@ Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
   config.log_file = Trim(PickString(dotenv, "LOG_FILE", ""));
   config.web_root = Trim(PickString(dotenv, "WEB_ROOT", ""));
 
+  // 邀请制注册（用户 2026-10-02）：默认开自助注册；关掉后注册必须带有效邀请
+  const std::string self_registration =
+      ToLower(Trim(PickString(dotenv, "ALLOW_SELF_REGISTRATION", "true")));
+  if (self_registration == "true" || self_registration == "1" || self_registration == "yes") {
+    config.allow_self_registration = true;
+  } else if (self_registration == "false" || self_registration == "0" ||
+             self_registration == "no") {
+    config.allow_self_registration = false;
+  } else {
+    return ConfigError("ALLOW_SELF_REGISTRATION 取值不合法",
+                       "允许 true/false/1/0/yes/no，实际值: " + self_registration);
+  }
+
   if (!IsKnownLogLevel(config.log_level)) {
     return ConfigError(
         "LOG_LEVEL 取值不合法",
