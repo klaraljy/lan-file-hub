@@ -668,6 +668,66 @@ Result<std::uint64_t> FileRepository::RecalculateAllUsedStorage() {
     return DatabaseError(ex, "校准用户存储统计失败");
   }
 }
+Result<std::vector<FileRepository::RecentFile>> FileRepository::ListRecentByOwner(
+    std::string_view owner_id, int limit, int offset) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(owner_id));
+    params.append(limit);
+    params.append(offset);
+    // ⛔ 不要 JOIN folders：kFileColumns 里的列名没有表别名（`id, owner_id, ...`），
+    //    join 进来另一张也有 `id` 的表会直接报「字段关联 "id" 是不明确的」（实测踩到）。
+    //    用相关子查询取文件夹名，既不歧义也不用改公共的 kFileColumns。
+    const pqxx::result rows = tx.exec(
+        "SELECT " + std::string(kFileColumns) +
+            ", COALESCE((SELECT name FROM folders WHERE folders.id = f.folder_id), '') "
+            "  AS folder_name "
+            "FROM files f "
+            "WHERE f.owner_id = $1::uuid AND f.status = 'ACTIVE' "
+            "ORDER BY f.updated_at DESC, f.id LIMIT $2 OFFSET $3",
+        params);
+    tx.commit();
+
+    std::vector<RecentFile> recent;
+    recent.reserve(rows.size());
+    for (const auto& row : rows) {
+      RecentFile item;
+      item.file = FileFromRow(row);
+      item.folder_id = item.file.folder_id;
+      item.folder_name = row["folder_name"].as<std::string>();
+      recent.push_back(std::move(item));
+    }
+    return recent;
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "查询最近文件失败");
+  }
+}
+
+Result<std::uint64_t> FileRepository::CountRecentByOwner(std::string_view owner_id) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(owner_id));
+    const pqxx::result rows = tx.exec(
+        "SELECT count(*)::bigint AS total FROM files WHERE owner_id = $1::uuid "
+        "AND status = 'ACTIVE'",
+        params);
+    tx.commit();
+    return static_cast<std::uint64_t>(rows[0]["total"].as<std::int64_t>());
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "统计最近文件失败");
+  }
+}
+
 Result<std::uint64_t> FileRepository::SumSizeByOwner(std::string_view owner_id) {
   auto lease = pool_.Acquire();
   if (!lease) {

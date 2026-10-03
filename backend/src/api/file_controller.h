@@ -27,6 +27,9 @@ class FileController : public drogon::HttpController<FileController> {
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(FileController::Upload, "/api/v1/files", drogon::Post, "AuthFilter");
   ADD_METHOD_TO(FileController::List, "/api/v1/files", drogon::Get, "AuthFilter");
+  // 「最近文件」（2026-10-03）：跨目录按更新时间列出自己的文件。
+  // ⛔ 刻意用独立路径而不是 /api/v1/files/recent：后者会和 /api/v1/files/{file_id} 抢匹配。
+  ADD_METHOD_TO(FileController::Recent, "/api/v1/recent-files", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(FileController::Metadata, "/api/v1/files/{file_id}", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(FileController::Download, "/api/v1/files/{file_id}/download", drogon::Get,
                 "AuthFilter");
@@ -51,6 +54,10 @@ class FileController : public drogon::HttpController<FileController> {
 
   void List(const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& callback);
+
+  /** 最近文件（跨目录，按更新时间倒序；只列自己的有效文件） */
+  void Recent(const drogon::HttpRequestPtr& req,
+              std::function<void(const drogon::HttpResponsePtr&)>&& callback);
 
   void Metadata(const drogon::HttpRequestPtr& req,
                 std::function<void(const drogon::HttpResponsePtr&)>&& callback,

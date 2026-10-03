@@ -270,6 +270,26 @@ Result<FileListing> FileService::ListInFolder(const Actor& actor, std::string_vi
   return listing;
 }
 
+Result<RecentListing> FileService::ListRecent(const Actor& actor, const Pagination& pagination) {
+  // 只列自己的文件：不需要权限检查（不是别人的资源），但必须带着 owner 过滤，别越界
+  auto listed =
+      files_.ListRecentByOwner(actor.user_id, pagination.page_size, pagination.Offset());
+  if (!listed) {
+    return listed.GetError();
+  }
+  auto total = files_.CountRecentByOwner(actor.user_id);
+  if (!total) {
+    return total.GetError();
+  }
+
+  RecentListing listing;
+  listing.files = std::move(listed.Value());
+  listing.total = total.Value();
+  listing.page = pagination.page;
+  listing.page_size = pagination.page_size;
+  return listing;
+}
+
 Result<File> FileService::LoadAccessible(const Actor& actor, std::string_view file_id,
                                          ResourceAction action) {
   auto found = files_.FindById(file_id);

@@ -71,6 +71,18 @@ class FileRepository {
 
   [[nodiscard]] Result<std::uint64_t> CountByFolder(std::string_view folder_id);
 
+  // 「最近文件」（2026-10-03，用户要求把「最近文件」页做成真列表）：
+  // 跨目录列出**自己的**有效文件，按 updated_at 倒序，并带上所在文件夹名
+  //（不带位置的话用户不知道文件在哪儿，等于白列）。
+  struct RecentFile {
+    File file;
+    std::string folder_id;
+    std::string folder_name;  // 根目录时为空，界面显示"我的文件"
+  };
+  [[nodiscard]] Result<std::vector<RecentFile>> ListRecentByOwner(std::string_view owner_id,
+                                                                  int limit, int offset);
+  [[nodiscard]] Result<std::uint64_t> CountRecentByOwner(std::string_view owner_id);
+
   [[nodiscard]] Result<std::uint64_t> SumSizeByOwner(std::string_view owner_id);
 
   // 阶段十一（定期校准）：按「所有文件版本大小之和」重算**全部**用户的 used_storage_bytes，

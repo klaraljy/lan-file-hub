@@ -478,6 +478,38 @@ If-Match: <current-version-id>
 > 结构化附加信息统一放在 `error.details` 里（该字段在统一响应信封中一直存在）。
 > `details` 只允许放客户端本来就能看到的标识（版本 id 等），不得放路径、SQL 或密钥。
 
+## 最近文件端点（2026-10-03 新增）
+
+```text
+GET /api/v1/recent-files?page=1&page_size=20
+```
+
+给「最近文件」页用（用户要求把它从占位说明做成**真列表**）：**跨目录**按 `updated_at` 倒序列出
+**自己的**有效文件，并带上"在哪个文件夹"，否则用户只看到文件名、不知道去哪找。
+
+- 需要登录（`AuthFilter`）；只列 `owner_id = 自己` 且 `status = ACTIVE` 的文件
+  —— 别人分享给你的在「分享给我的」（`/api/v1/shared-with-me`），两处职责不混。
+- ⛔ 路径**不用** `/api/v1/files/recent`：那会和 `/api/v1/files/{file_id}` 抢匹配（Drogon 路由）。
+- 分页与排序规则同其它列表（`page_size` 1–100）。
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "uuid", "name": "报告.pdf", "size_bytes": 102400, "mime_type": "application/pdf",
+        "updated_at": "2026-10-03T01:02:03Z", "current_version_id": "uuid",
+        "folder_id": "uuid", "folder_name": "工作"
+      }
+    ],
+    "total": 12, "page": 1, "page_size": 20
+  },
+  "request_id": "uuid"
+}
+```
+
+- `folder_name` 为空串表示**根目录**（界面显示「我的文件」）。
+
 ## 版本端点
 
 ```text

@@ -47,6 +47,14 @@ struct FileListing {
   int page_size{kDefaultPageSize};
 };
 
+/** 最近文件（跨目录）：只列自己的有效文件，按更新时间倒序，并带上所在文件夹 */
+struct RecentListing {
+  std::vector<FileRepository::RecentFile> files;
+  std::uint64_t total{0};
+  int page{1};
+  int page_size{kDefaultPageSize};
+};
+
 struct FileDownload {
   File file;
   std::string absolute_path;  // 交给 HTTP 层做流式响应
@@ -110,6 +118,10 @@ class FileService {
 
   [[nodiscard]] Result<FileListing> ListInFolder(const Actor& actor, std::string_view folder_id,
                                                  const Pagination& pagination);
+
+  /** 最近文件（2026-10-03）：跨目录列出自己的有效文件，按更新时间倒序。
+   *  只列**自己拥有**的文件 —— 别人分享给你的在「分享给我的」里，两处职责不混。 */
+  [[nodiscard]] Result<RecentListing> ListRecent(const Actor& actor, const Pagination& pagination);
 
   [[nodiscard]] Result<File> GetMetadata(const Actor& actor, std::string_view file_id);
 

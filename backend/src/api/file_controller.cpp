@@ -213,6 +213,45 @@ void FileController::List(const drogon::HttpRequestPtr& req,
       CurrentRequestId()));
 }
 
+void FileController::Recent(const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+
+  auto pagination = ParsePagination(req->getParameter("page"), req->getParameter("page_size"),
+                                    req->getParameter("sort_by"), req->getParameter("sort_order"));
+  if (!pagination) {
+    RespondError(callback, pagination.GetError());
+    return;
+  }
+
+  auto listing = context->files_service->ListRecent(ActorFrom(req), pagination.Value());
+  if (!listing) {
+    RespondError(callback, listing.GetError());
+    return;
+  }
+
+  nlohmann::json items = nlohmann::json::array();
+  for (const auto& recent : listing.Value().files) {
+    nlohmann::json item = FileToJson(recent.file);
+    // 附上"在哪儿"：不然用户只看到一个文件名，不知道去哪个文件夹找
+    item["folder_id"] = recent.folder_id;
+    item["folder_name"] = recent.folder_name;
+    items.push_back(std::move(item));
+  }
+  callback(MakeSuccessResponse(
+      nlohmann::json{
+          {"items", std::move(items)},
+          {"total", listing.Value().total},
+          {"page", listing.Value().page},
+          {"page_size", listing.Value().page_size},
+      },
+      CurrentRequestId()));
+}
+
 void FileController::Metadata(const drogon::HttpRequestPtr& req,
                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                               std::string file_id) {

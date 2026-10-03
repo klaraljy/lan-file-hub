@@ -38,11 +38,31 @@ export interface ListFilesParams {
   sort_order?: 'asc' | 'desc';
 }
 
+/** 「最近文件」里的一条：除了文件本身，还带它在哪个文件夹（不带位置用户不知道去哪找） */
+export interface RecentFileItem extends FileMeta {
+  folder_id: string;
+  /** 根目录时为空串，界面显示「我的文件」 */
+  folder_name: string;
+}
+
+export interface RecentFileListing {
+  items: RecentFileItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export const filesApi = {
   async list(folderId: string, params: ListFilesParams = {}): Promise<FileListing> {
     const response = await http.get<ApiEnvelope<FileListing>>('/files', {
       params: { folder_id: folderId, ...params },
     });
+    return unwrap(response.data);
+  },
+
+  /** 最近文件：跨目录按更新时间倒序（后端 /api/v1/recent-files，2026-10-03） */
+  async listRecent(params: { page?: number; page_size?: number } = {}): Promise<RecentFileListing> {
+    const response = await http.get<ApiEnvelope<RecentFileListing>>('/recent-files', { params });
     return unwrap(response.data);
   },
 
