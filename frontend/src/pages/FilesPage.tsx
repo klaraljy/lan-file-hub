@@ -40,6 +40,7 @@ import {
   HistoryOutlined,
   InfoCircleOutlined,
   PlusOutlined,
+  PartitionOutlined,
   ReloadOutlined,
   SearchOutlined,
   SendOutlined,
@@ -62,6 +63,7 @@ import { ResponsiveSheet } from '../components/ResponsiveSheet';
 import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { UploadPanel } from '../components/UploadPanel';
+import { FolderTree } from '../components/FolderTree';
 import { VersionHistoryModal } from '../components/VersionHistoryModal';
 import { useAuth } from '../features/auth/AuthContext';
 import { fileErrorMessage, useDownloadFile, useFolderFiles } from '../features/files/useFiles';
@@ -105,6 +107,26 @@ import type { Folder } from '../types/folder';
 type EditorMode = { kind: 'create' } | { kind: 'rename'; folder: Folder } | null;
 type ShareTarget = { file?: FileMeta; folder?: Folder } | null;
 
+/** 目录树显示/隐藏的选择记在本地（刷新后保持用户的选择；读不到就用默认值） */
+const TREE_PREFERENCE_KEY = 'lfh-files-show-tree';
+
+export function readTreePreference(): boolean {
+  try {
+    const raw = localStorage.getItem(TREE_PREFERENCE_KEY);
+    return raw === null ? true : raw === '1';
+  } catch {
+    return true;
+  }
+}
+
+export function writeTreePreference(visible: boolean): void {
+  try {
+    localStorage.setItem(TREE_PREFERENCE_KEY, visible ? '1' : '0');
+  } catch {
+    // 隐私模式下写不了就算了，不影响使用
+  }
+}
+
 export function FilesPage() {
   const { user } = useAuth();
   const { message } = AntApp.useApp();
@@ -125,6 +147,11 @@ export function FilesPage() {
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [keyword, setKeyword] = useState('');
+  // 目录树默认打开（用户 2026-10-03 要求"像资源管理器那样看结构"），关掉后记住选择
+  const [showTree, setShowTree] = useState(() => readTreePreference());
+  useEffect(() => {
+    writeTreePreference(showTree);
+  }, [showTree]);
   const [form] = Form.useForm<{ name: string }>();
 
   const rootQuery = useRootFolder();
@@ -451,6 +478,32 @@ export function FilesPage() {
   );
 
   return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      {/* 左侧目录树（2026-10-03 用户要求）：像资源管理器那样一眼看到整个结构。
+          手机上不显示（窄屏放不下），手机上用面包屑 + 列表。 */}
+      {!isMobile && showTree && (
+        <Card
+          size="small"
+          title="目录结构"
+          style={{
+            width: 264,
+            flex: '0 0 264px',
+            position: 'sticky',
+            top: 12,
+            maxHeight: 'calc(100vh - 140px)',
+            overflow: 'auto',
+          }}
+          styles={{ body: { padding: 6 } }}
+        >
+          <FolderTree
+            root={rootQuery.data}
+            currentId={currentId}
+            chain={chain}
+            onSelect={(folderId) => navigate(`/files/${folderId}`)}
+          />
+        </Card>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
     <Card>
       {/* 空间快满时提醒（2026-10-03）：在最常用的页面上说清楚，不等到上传失败才报错 */}
       <QuotaWarning />
@@ -477,6 +530,17 @@ export function FilesPage() {
         <Button icon={<PlusOutlined />} onClick={openCreate} disabled={!currentId}>
           新建文件夹
         </Button>
+        {/* 左侧目录树（2026-10-03 用户要求）：像资源管理器那样看整个结构，手机上不提供 */}
+        {!isMobile && (
+          <Button
+            icon={<PartitionOutlined />}
+            onClick={() => setShowTree((visible) => !visible)}
+            type={showTree ? 'primary' : 'default'}
+            ghost={showTree}
+          >
+            {showTree ? '隐藏目录树' : '目录树'}
+          </Button>
+        )}
         <Button
           icon={<ReloadOutlined />}
           onClick={() => {
@@ -740,5 +804,7 @@ export function FilesPage() {
         </Form>
       </ResponsiveSheet>
     </Card>
+      </div>
+    </div>
   );
 }
