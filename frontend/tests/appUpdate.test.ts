@@ -4,6 +4,7 @@ import {
   APP_UA_MARKER,
   appUpdateState,
   installedBuildFromUserAgent,
+  rememberLockedInApp,
 } from '../src/features/app/appUpdate';
 
 /**
@@ -64,5 +65,34 @@ describe('appUpdateState', () => {
   it('服务器上读不到构建号时退回"下载安装"，不瞎说已是最新', () => {
     expect(appUpdateState(4, undefined)).toBe('install');
     expect(appUpdateState(4, 0)).toBe('install');
+  });
+});
+
+/**
+ * 「App 内默认记住登录」（用户 2026-10-03 批准的交接单 ③）：手机 App 里每天重新输口令是缺陷。
+ * 认错了的后果：在 App 里留下一个能被误取消的勾选框（下次又得重登）。
+ */
+describe('rememberLockedInApp', () => {
+  it('在 App 里 → 强制勾上、不可取消', () => {
+    expect(rememberLockedInApp(IN_APP_UA)).toBe(true);
+    expect(rememberLockedInApp(`${APP_UA_MARKER}5`)).toBe(true);
+  });
+
+  it('普通浏览器（手机 / 电脑）→ 保留勾选框，用户能取消', () => {
+    expect(
+      rememberLockedInApp(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+      ),
+    ).toBe(false);
+    expect(
+      rememberLockedInApp('Mozilla/5.0 (Linux; Android 13) Chrome/120.0 Mobile Safari/537.36'),
+    ).toBe(false);
+  });
+
+  it('空值、标记后面没有构建号 → 不锁（宁可让用户自己勾，也不能误锁）', () => {
+    expect(rememberLockedInApp('')).toBe(false);
+    expect(rememberLockedInApp(undefined)).toBe(false);
+    expect(rememberLockedInApp(`${APP_UA_MARKER}`)).toBe(false);
+    expect(rememberLockedInApp(`${APP_UA_MARKER}0`)).toBe(false);
   });
 });

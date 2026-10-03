@@ -42,3 +42,14 @@ export function appUpdateState(installed: number | null, latest: number | undefi
   if (installed === null || !latest || latest <= 0) return 'install';
   return latest > installed ? 'update' : 'latest';
 }
+
+/**
+ * 在 App 里打开时，「记住我」必须是**强制勾上且不能取消**（2026-10-03 用户批准的交接单 ③）。
+ *
+ * 用户口径：「App 内默认记住登录」——手机 App 每天都要重新输口令是产品缺陷（AGENTS §14.1）。
+ * 判断依据就是 UA 里那段 `LanFileHubApp/<versionCode>`：认不出来 = 普通浏览器，
+ * 老老实实保留勾选框（公用电脑上用户要能取消）。
+ */
+export function rememberLockedInApp(userAgent: string | undefined | null): boolean {
+  return installedBuildFromUserAgent(userAgent) !== null;
+}

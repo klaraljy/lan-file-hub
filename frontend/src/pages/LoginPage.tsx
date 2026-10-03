@@ -3,6 +3,7 @@ import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../features/auth/AuthContext';
+import { rememberLockedInApp } from '../features/app/appUpdate';
 import { ApiError } from '../services/api';
 
 interface LoginForm {
@@ -12,12 +13,22 @@ interface LoginForm {
   remember: boolean;
 }
 
+/** 当前 UA（单测里没有 navigator，取空串） */
+function currentUserAgent(): string {
+  return typeof navigator === 'undefined' ? '' : navigator.userAgent;
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /**
+   * 在 App 里打开时强制记住登录（2026-10-03 用户批准的交接单 ③）。
+   * 识别方式：App 的 WebView 在 UA 末尾加了 `LanFileHubApp/<构建号>`（见 android 的 WebViewActivity）。
+   */
+  const inApp = rememberLockedInApp(currentUserAgent());
 
   // 从受保护页面跳过来时，登录成功后回到原处
   const from = (location.state as { from?: string } | null)?.from ?? '/files';
@@ -26,7 +37,8 @@ export function LoginPage() {
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await login(values.identifier.trim(), values.password, values.remember);
+      // App 内无论如何都按"记住"提交：勾选框已经禁用，用户改不了它
+      await login(values.identifier.trim(), values.password, inApp ? true : values.remember);
       navigate(from, { replace: true });
     } catch (error) {
       // 后端对「用户不存在」和「密码错误」返回同一句文案，这里原样展示
@@ -62,10 +74,13 @@ export function LoginPage() {
           </Form.Item>
 
           <Form.Item name="remember" valuePropName="checked" initialValue={true}>
-            <Checkbox>
+            {/* App 内（UA 带构建号）勾选框禁用：在这台手机上保持登录 30 天是默认且不可取消的 */}
+            <Checkbox disabled={inApp}>
               记住我
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                （这台设备 30 天内不用再登录；公用电脑请取消勾选）
+                {inApp
+                  ? '（在这台手机上保持登录 30 天）'
+                  : '（这台设备 30 天内不用再登录；公用电脑请取消勾选）'}
               </Typography.Text>
             </Checkbox>
           </Form.Item>
