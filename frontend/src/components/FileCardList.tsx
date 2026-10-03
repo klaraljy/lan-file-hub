@@ -37,6 +37,7 @@ import { TOUCH_HEIGHT } from '../hooks/useIsMobile';
 const ACTION_ICONS: Record<RowActionKey, React.ReactNode> = {
   open: <FolderOpenOutlined />,
   download: <DownloadOutlined />,
+  downloadAll: <DownloadOutlined />,
   preview: <EyeOutlined />,
   detail: <InfoCircleOutlined />,
   versions: <HistoryOutlined />,
@@ -61,6 +62,8 @@ interface Props {
   onPermission: (row: BrowseRow) => void;
   /** 「发送给…」：按人发送（AGENTS.md §14.3） */
   onSend: (row: BrowseRow) => void;
+  /** 文件夹「下载」：下载里面的全部文件（2026-10-03 用户要求，不打包） */
+  onDownloadFolder: (row: Extract<BrowseRow, { kind: 'folder' }>) => void;
   onDelete: (row: BrowseRow) => void;
 }
 
@@ -75,6 +78,7 @@ export function FileCardList({
   onShare,
   onPermission,
   onSend,
+  onDownloadFolder,
   onDelete,
 }: Props) {
   const { modal } = AntApp.useApp();
@@ -128,6 +132,7 @@ export function FileCardList({
       if (key === 'versions') onVersions(row);
     } else {
       if (key === 'open') onOpenFolder(row);
+      if (key === 'downloadAll') onDownloadFolder(row);
       if (key === 'rename') onRename(row);
     }
     if (key === 'send') onSend(row);
@@ -137,6 +142,15 @@ export function FileCardList({
 
   function handleMore(row: BrowseRow, key: string) {
     dispatch(row, key as RowActionKey);
+  }
+
+  /** 主按钮用 rowActions 里的第一个动作（文件=下载、文件夹=下载里面的东西） */
+  function primaryKey(row: BrowseRow): RowActionKey {
+    return rowActions(row.kind).inline[0]!.key;
+  }
+
+  function primaryLabel(row: BrowseRow): string {
+    return rowActions(row.kind).inline[0]!.label;
   }
 
   return (
@@ -189,15 +203,15 @@ export function FileCardList({
             style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}
             onClick={(event) => event.stopPropagation()}
           >
-            {/* 主按钮：这一行最常用的动作（文件=下载、文件夹=打开），占满一行最好点 */}
+            {/* 主按钮：这一行最常用的动作（文件=下载、文件夹=下载里面的东西），占满一行最好点 */}
             <Button
               type="primary"
               block
-              icon={row.kind === 'file' ? <DownloadOutlined /> : <FolderOpenOutlined />}
+              icon={ACTION_ICONS[primaryKey(row)]}
               style={{ height: TOUCH_HEIGHT }}
-              onClick={() => dispatch(row, row.kind === 'file' ? 'download' : 'open')}
+              onClick={() => dispatch(row, primaryKey(row))}
             >
-              {row.kind === 'file' ? '下载' : '打开'}
+              {primaryLabel(row)}
             </Button>
             <Space size={8} style={{ width: '100%', justifyContent: 'space-between' }}>
               {/* 「发送给…」仍在行上（AGENTS §14.3 不许藏进"更多"），但不再抢占主按钮 */}

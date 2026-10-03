@@ -111,7 +111,7 @@ class TrashTest : public ::testing::Test {
     ASSERT_TRUE(storage.Ok()) << storage.GetError().message;
     storage_ = storage.Value();
 
-    folders_service_ = std::make_shared<FolderService>(*folders_, *permissions_);
+    folders_service_ = std::make_shared<FolderService>(*folders_, *files_, *permissions_);
     files_service_ = std::make_shared<FileService>(*files_, *folders_, *storage_, *permissions_,
                                                    FileServiceOptions{64ULL * kMiB});
     uploads_ = std::make_shared<UploadService>(*sessions_, *files_, *folders_, *users_, *storage_,

@@ -35,6 +35,7 @@ import { TOUCH_HEIGHT, useIsMobile } from '../hooks/useIsMobile';
 const ACTION_ICONS: Record<RowActionKey, React.ReactNode> = {
   open: <FolderOpenOutlined />,
   download: <DownloadOutlined />,
+  downloadAll: <DownloadOutlined />,
   preview: <EyeOutlined />,
   detail: <InfoCircleOutlined />,
   versions: <HistoryOutlined />,
@@ -56,6 +57,8 @@ interface Props {
   onShare: (row: BrowseRow) => void;
   /** 「发送给…」：按人发送（AGENTS.md §14.3） */
   onSend: (row: BrowseRow) => void;
+  /** 文件夹「下载」：下载里面的全部文件（2026-10-03 用户要求，不打包） */
+  onDownloadFolder: (row: Extract<BrowseRow, { kind: 'folder' }>) => void;
   onDelete: (row: BrowseRow) => void;
 }
 
@@ -68,6 +71,7 @@ export function FileGrid({
   onVersions,
   onShare,
   onSend,
+  onDownloadFolder,
   onDelete,
 }: Props) {
   const isMobile = useIsMobile();
@@ -90,6 +94,7 @@ export function FileGrid({
       if (key === 'versions') onVersions(row);
     } else {
       if (key === 'open') onOpenFolder(row);
+      if (key === 'downloadAll') onDownloadFolder(row);
       // 网格里没有「重命名」弹窗入口，交给详情/列表视图
     }
     if (key === 'send') onSend(row);

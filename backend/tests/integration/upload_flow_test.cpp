@@ -97,7 +97,7 @@ class UploadFlowTest : public ::testing::Test {
     uploads_ = std::make_shared<UploadService>(*sessions_, *files_, *folders_, *users_, *storage_,
                                                *permissions_, Options());
 
-    folders_service_ = std::make_shared<FolderService>(*folders_, *permissions_);
+    folders_service_ = std::make_shared<FolderService>(*folders_, *files_, *permissions_);
 
     owner_ = MakeUser("uploadowner");
     other_ = MakeUser("uploadother");

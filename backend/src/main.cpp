@@ -152,8 +152,8 @@ int main(int /*argc*/, char** /*argv*/) {
   context->scanner = std::make_shared<NoopFileScanner>();
   spdlog::warn("病毒扫描：未接入真实引擎（{}），上传内容不会被扫描；详见 README「已知限制」",
                context->scanner->name());
-  context->folders_service =
-      std::make_shared<FolderService>(*context->folders, *context->permissions);
+  context->folders_service = std::make_shared<FolderService>(
+      *context->folders, *context->files, *context->permissions);
   context->files_service = std::make_shared<FileService>(
       *context->files, *context->folders, *context->storage, *context->permissions,
       FileServiceOptions{config.max_file_size_bytes, config.min_free_disk_bytes});

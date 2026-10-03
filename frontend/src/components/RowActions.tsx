@@ -29,6 +29,7 @@ import { TOUCH_HEIGHT } from '../hooks/useIsMobile';
 const ICONS: Record<RowActionKey, React.ReactNode> = {
   open: <FolderOpenOutlined />,
   download: <DownloadOutlined />,
+  downloadAll: <DownloadOutlined />,
   preview: <EyeOutlined />,
   detail: <InfoCircleOutlined />,
   versions: <HistoryOutlined />,

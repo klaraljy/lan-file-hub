@@ -258,8 +258,49 @@ Result<std::uint64_t> FileRepository::CountByFolder(std::string_view folder_id) 
   }
 }
 
-Result<std::vector<FileVersion>> FileRepository::ListVersions(std::string_view file_id) {
+// 一批目录下的有效文件（"一同下载文件夹里的东西"用，2026-10-03）。
+// 用 IN ($1, $2, …) 一次查完，避免"每个子目录一次查询"（N+1）。
+// ⛔ 不用 `= ANY($1::uuid[])`：libpqxx 传 std::vector 是 text[]，再转 uuid[] 在某些
+//    驱动/版本组合下会失败（实测报"查询目录下文件失败"），逐参数更稳。
+Result<std::vector<File>> FileRepository::ListActiveByFolderIds(
+    const std::vector<std::string>& folder_ids) {
+  if (folder_ids.empty()) {
+    return std::vector<File>{};
+  }
   auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    std::string placeholders;
+    for (std::size_t index = 0; index < folder_ids.size(); ++index) {
+      if (index > 0) {
+        placeholders += ", ";
+      }
+      placeholders += "$" + std::to_string(index + 1) + "::uuid";
+      params.append(folder_ids[index]);
+    }
+    const pqxx::result rows =
+        tx.exec("SELECT " + std::string(kFileColumns) +
+                    " FROM files WHERE folder_id IN (" + placeholders +
+                    ") AND status = 'ACTIVE' ORDER BY original_name",
+                params);
+    tx.commit();
+
+    std::vector<File> files;
+    files.reserve(rows.size());
+    for (const auto& row : rows) {
+      files.push_back(FileFromRow(row));
+    }
+    return files;
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "查询目录下文件失败");
+  }
+}
+
+Result<std::vector<FileVersion>> FileRepository::ListVersions(std::string_view file_id) {  auto lease = pool_.Acquire();
   if (!lease) {
     return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
   }

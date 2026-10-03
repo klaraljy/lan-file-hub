@@ -51,8 +51,9 @@ class FolderFlowTest : public ::testing::Test {
     pool_ = pool.Value();
     users_ = std::make_shared<UserRepository>(*pool_);
     folders_ = std::make_shared<FolderRepository>(*pool_);
+    files_ = std::make_shared<FileRepository>(*pool_);
     permissions_ = std::make_shared<OwnerBasedPermissionChecker>();
-    service_ = std::make_shared<FolderService>(*folders_, *permissions_);
+    service_ = std::make_shared<FolderService>(*folders_, *files_, *permissions_);
 
     // 清空 users（folders 通过外键级联删除）
     if (!users_->DeleteAllForTesting().Ok()) {
@@ -101,9 +102,43 @@ class FolderFlowTest : public ::testing::Test {
     return service_->Create(actor, parent_id, name);
   }
 
+  /** 直接在库里造一条文件记录（"一同下载"只需要元数据，不碰对象存储） */
+  File MakeFile(const std::string& owner_id, const std::string& folder_id, const std::string& name,
+                std::uint64_t size) {
+    File file;
+    file.id = GenerateUuidV4();
+    file.owner_id = owner_id;
+    file.folder_id = folder_id;
+    file.original_name = name;
+    file.mime_type = "video/mp4";
+    file.size_bytes = size;
+    file.content_hash = std::string(64, 'a');
+    file.storage_key = "objects/aa/" + file.content_hash;
+    file.status = FileStatus::kActive;
+    return file;
+  }
+
+  /** 把文件连同它的第一个版本一起写库（files 与 file_versions 必须成对，外键约束） */
+  Status CreateFile(const std::string& owner_id, const std::string& folder_id,
+                    const std::string& name, std::uint64_t size) {
+    const File file = MakeFile(owner_id, folder_id, name, size);
+    FileVersion version;
+    version.id = GenerateUuidV4();
+    version.file_id = file.id;
+    version.version_number = 1;
+    version.content_hash = file.content_hash;
+    version.size_bytes = size;
+    version.storage_key = file.storage_key;
+    version.created_by = owner_id;
+    version.is_current = true;
+    const auto created = files_->CreateWithFirstVersion(file, version);
+    return created.Ok() ? Status::Success() : Status(created.GetError());
+  }
+
   std::shared_ptr<ConnectionPool> pool_;
   std::shared_ptr<UserRepository> users_;
   std::shared_ptr<FolderRepository> folders_;
+  std::shared_ptr<FileRepository> files_;
   std::shared_ptr<OwnerBasedPermissionChecker> permissions_;
   std::shared_ptr<FolderService> service_;
   User owner_;
@@ -331,6 +366,53 @@ TEST_F(FolderFlowTest, MalformedIdsAreClientErrorsNotServerErrors) {
   const auto fetched = service_->Get(Owner(), "still-not-a-uuid");
   ASSERT_FALSE(fetched.Ok());
   EXPECT_EQ(fetched.GetError().code, "INVALID_ARGUMENT");
+}
+
+TEST_F(FolderFlowTest, ListFilesRecursiveWalksSubtreeWithRelativePaths) {
+  // 「一同下载文件夹里的东西」（2026-10-03 用户要求）靠这个接口拿清单：
+  // 它必须把**子目录里的文件**也带上，并且路径是相对被点目录的。
+  const auto root = Root(Owner());
+  ASSERT_TRUE(root.Ok()) << root.GetError().message;
+  const std::string root_id = root.Value().id;
+
+  const auto child = MakeFolder(Owner(), root_id, "原版");
+  ASSERT_TRUE(child.Ok()) << child.GetError().message;
+  const auto grandchild = MakeFolder(Owner(), child.Value().id, "第一季");
+  ASSERT_TRUE(grandchild.Ok()) << grandchild.GetError().message;
+
+  ASSERT_TRUE(CreateFile(owner_.id, root_id, "readme.txt", 10).Ok());
+  ASSERT_TRUE(CreateFile(owner_.id, child.Value().id, "1.mp4", 1000).Ok());
+  ASSERT_TRUE(CreateFile(owner_.id, grandchild.Value().id, "2.mp4", 2000).Ok());
+
+  const auto listing = service_->ListFilesRecursive(Owner(), root_id);
+  ASSERT_TRUE(listing.Ok()) << listing.GetError().message;
+  EXPECT_EQ(listing.Value().file_count, 3U);
+  EXPECT_EQ(listing.Value().total_bytes, 3010U);
+  EXPECT_FALSE(listing.Value().truncated);
+
+  std::vector<std::string> paths;
+  for (const auto& entry : listing.Value().items) {
+    paths.push_back(entry.path);
+  }
+  // 相对路径：根目录下的就是文件名，子目录带上前缀，孙目录带两级
+  EXPECT_NE(std::find(paths.begin(), paths.end(), "readme.txt"), paths.end());
+  EXPECT_NE(std::find(paths.begin(), paths.end(), "原版/1.mp4"), paths.end());
+  EXPECT_NE(std::find(paths.begin(), paths.end(), "原版/第一季/2.mp4"), paths.end());
+
+  // 只点「原版」时，只应看到它下面的两个文件
+  const auto child_listing = service_->ListFilesRecursive(Owner(), child.Value().id);
+  ASSERT_TRUE(child_listing.Ok());
+  EXPECT_EQ(child_listing.Value().file_count, 2U);
+  EXPECT_EQ(child_listing.Value().total_bytes, 3000U);
+}
+
+TEST_F(FolderFlowTest, ListFilesRecursiveRequiresPermissionAndHidesOtherUsersFolders) {
+  // 别人看不到、也不能列出我的目录（返回 404 而不是 403，避免探测资源是否存在）
+  const auto root = Root(Owner());
+  ASSERT_TRUE(root.Ok());
+  const auto denied = service_->ListFilesRecursive(Other(), root.Value().id);
+  ASSERT_FALSE(denied.Ok());
+  EXPECT_EQ(denied.GetError().code, "RESOURCE_NOT_FOUND");
 }
 
 }  // namespace

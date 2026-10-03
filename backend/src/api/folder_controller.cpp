@@ -110,10 +110,43 @@ void FolderController::Children(const drogon::HttpRequestPtr& req,
   callback(MakeSuccessResponse(payload, CurrentRequestId()));
 }
 
+// 「一同下载文件夹里的东西」（2026-10-03 用户要求）：返回该目录**含子目录**的全部文件清单。
+// 只给 id / 路径 / 大小，内容仍走既有的"一次性票据 + 浏览器原生下载"逐个下 —— 不打包。
+void FolderController::Files(const drogon::HttpRequestPtr& req,
+                             std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                             std::string folder_id) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+  auto listing = context->folders_service->ListFilesRecursive(ActorFrom(req), folder_id);
+  if (!listing) {
+    RespondError(callback, listing.GetError());
+    return;
+  }
+
+  nlohmann::json items = nlohmann::json::array();
+  for (const auto& entry : listing.Value().items) {
+    items.push_back(nlohmann::json{
+        {"file_id", entry.file_id},
+        {"name", entry.name},
+        {"path", entry.path},
+        {"size_bytes", entry.size_bytes},
+    });
+  }
+  nlohmann::json payload{
+      {"items", std::move(items)},
+      {"file_count", listing.Value().file_count},
+      {"total_bytes", listing.Value().total_bytes},
+      {"truncated", listing.Value().truncated},
+  };
+  callback(MakeSuccessResponse(payload, CurrentRequestId()));
+}
+
 void FolderController::Path(const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& callback,
-                            std::string folder_id) {
-  const auto context = GetAppContext();
+                            std::string folder_id) {  const auto context = GetAppContext();
   if (!context) {
     RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
     return;

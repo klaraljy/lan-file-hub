@@ -38,6 +38,23 @@ export interface ListFilesParams {
   sort_order?: 'asc' | 'desc';
 }
 
+/** 「一同下载文件夹里的东西」用的扁平清单（见 filesApi.listFolderFiles） */
+export interface FolderFileEntry {
+  file_id: string;
+  name: string;
+  /** 相对被点目录的路径，例如「子目录/1.mp4」 */
+  path: string;
+  size_bytes: number;
+}
+
+export interface FolderFileListing {
+  items: FolderFileEntry[];
+  file_count: number;
+  total_bytes: number;
+  /** 文件太多被截断（界面要说清"只下前 N 个"） */
+  truncated: boolean;
+}
+
 /** 「最近文件」里的一条：除了文件本身，还带它在哪个文件夹（不带位置用户不知道去哪找） */
 export interface RecentFileItem extends FileMeta {
   folder_id: string;
@@ -109,5 +126,16 @@ export const filesApi = {
    */
   async downloadById(fileId: string, fileName: string): Promise<void> {
     await downloadWithTicket(`/files/${fileId}/download-ticket`, fileName);
+  },
+
+  /**
+   * 一个目录（含子目录）里的全部文件（2026-10-03「一同下载文件夹里的东西」）。
+   * 只返回 id / 路径 / 大小，内容仍逐个走票据下载 —— 不打包。
+   */
+  async listFolderFiles(folderId: string): Promise<FolderFileListing> {
+    const response = await http.get<ApiEnvelope<FolderFileListing>>(
+      `/folders/${folderId}/files`,
+    );
+    return unwrap(response.data);
   },
 };

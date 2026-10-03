@@ -183,8 +183,46 @@ Result<std::vector<Folder>> FolderRepository::ListChildren(std::string_view pare
   }
 }
 
-// 按名字搜索自己的有效文件夹（2026-10-03，搜索功能）。
-// 只搜自己的、只搜 ACTIVE（回收站里的不出现）；query 是**原始关键字**，
+// 整棵子树（含自己）：path_key 前缀匹配，走 folders_path_key_idx 索引。
+// 打包下载一个文件夹时用它一次拿到所有子目录（2026-10-03）。
+Result<std::vector<Folder>> FolderRepository::ListSubtree(std::string_view path_key) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    // LIKE 的通配符必须转义：path_key 里只会出现 '/' 与 uuid，但转义一次更稳妥
+    std::string pattern(path_key);
+    std::string escaped;
+    escaped.reserve(pattern.size() + 8);
+    for (const char ch : pattern) {
+      if (ch == '%' || ch == '_' || ch == '\\') {
+        escaped.push_back('\\');
+      }
+      escaped.push_back(ch);
+    }
+    params.append(escaped + "%");
+    const pqxx::result rows =
+        tx.exec("SELECT " + std::string(kSelectColumns) +
+                    " FROM folders WHERE path_key LIKE $1 AND status = 'ACTIVE' "
+                    "ORDER BY path_key",
+                params);
+    tx.commit();
+
+    std::vector<Folder> folders;
+    folders.reserve(rows.size());
+    for (const auto& row : rows) {
+      folders.push_back(FolderFromRow(row));
+    }
+    return folders;
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "查询子目录树失败");
+  }
+}
+
+// 按名字搜索自己的有效文件夹（2026-10-03，搜索功能）。// 只搜自己的、只搜 ACTIVE（回收站里的不出现）；query 是**原始关键字**，
 // 通配符由这里用公共助手转义（搜 `%` 不会变成"匹配全部"）。
 Result<std::vector<Folder>> FolderRepository::SearchByOwner(std::string_view owner_id,
                                                             std::string_view query, int limit) {

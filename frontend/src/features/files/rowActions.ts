@@ -18,6 +18,7 @@ export type RowKind = 'file' | 'folder';
 export type RowActionKey =
   | 'open'
   | 'download'
+  | 'downloadAll'
   | 'preview'
   | 'detail'
   | 'versions'
@@ -35,7 +36,7 @@ export interface RowAction {
 }
 
 export interface RowActionSet {
-  /** 直接摆在行上的按钮：**第一个是主按钮**，最多两个 */
+  /** 直接摆在行上的按钮：**第一个是主按钮**，最多三个（文件夹要有「打开」也要有「下载」） */
   inline: RowAction[];
   /** 收进「更多」下拉的 */
   menu: RowAction[];
@@ -70,10 +71,18 @@ export function fileRowActions(options: RowActionOptions = {}): RowActionSet {
   };
 }
 
-/** 文件夹：主按钮＝打开；「重命名」不再单独占一个行内按钮 */
+/**
+ * 文件夹：主按钮＝**下载**（下载里面的全部文件，2026-10-03 用户要求
+ * "我是想一同下载文件夹里面的东西，而不是打包成 zip"），第二个是「打开」。
+ * 「重命名」不占行内位置，进「更多」。
+ */
 export function folderRowActions(): RowActionSet {
   return {
-    inline: [{ key: 'open', label: '打开' }, SEND],
+    inline: [
+      { key: 'downloadAll', label: '下载' },
+      { key: 'open', label: '打开' },
+      SEND,
+    ],
     menu: [{ key: 'rename', label: '重命名' }, SHARE, PERMISSION, DELETE],
   };
 }

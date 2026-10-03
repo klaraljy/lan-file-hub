@@ -102,6 +102,7 @@ describe('手机卡片（FileCardList）的操作区', () => {
         onShare={noop}
         onPermission={noop}
         onSend={noop}
+        onDownloadFolder={noop}
         onDelete={noop}
       />,
     );
@@ -120,7 +121,7 @@ describe('手机卡片（FileCardList）的操作区', () => {
     expect(buttons).toHaveLength(3);
   });
 
-  it('文件夹卡片的主按钮是「打开」', async () => {
+  it('文件夹卡片的主按钮是「下载」（下载里面的东西，用户 2026-10-03 要求）', async () => {
     const container = await render(
       <FileCardList
         rows={[folderRow('原版')]}
@@ -133,12 +134,14 @@ describe('手机卡片（FileCardList）的操作区', () => {
         onShare={noop}
         onPermission={noop}
         onSend={noop}
+        onDownloadFolder={noop}
         onDelete={noop}
       />,
     );
 
     const primary = container.querySelector('button.ant-btn-primary');
-    expect(textOf(primary)).toContain('打开');
+    expect(textOf(primary)).toContain('下载');
+    // 文件夹卡片：主按钮（下载）+ 发送给… + 更多 = 3 个控件（「打开」是点整张卡）
     expect(container.querySelectorAll('button')).toHaveLength(3);
   });
 });
@@ -155,6 +158,7 @@ describe('桌面网格（FileGrid）的操作区', () => {
         onVersions={noop}
         onShare={noop}
         onSend={noop}
+        onDownloadFolder={noop}
         onDelete={noop}
       />,
     );

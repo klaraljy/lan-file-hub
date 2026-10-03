@@ -71,6 +71,13 @@ class FileRepository {
 
   [[nodiscard]] Result<std::uint64_t> CountByFolder(std::string_view folder_id);
 
+  /**
+   * 一批目录下的有效文件（打包下载一个文件夹时用：一次查完子树的文件，2026-10-03）。
+   * `folder_ids` 为空时返回空列表（不查库）。
+   */
+  [[nodiscard]] Result<std::vector<File>> ListActiveByFolderIds(
+      const std::vector<std::string>& folder_ids);
+
   // 「最近文件」（2026-10-03，用户要求把「最近文件」页做成真列表）：
   // 跨目录列出**自己的**有效文件，按 updated_at 倒序，并带上所在文件夹名
   //（不带位置的话用户不知道文件在哪儿，等于白列）。

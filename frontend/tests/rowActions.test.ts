@@ -40,9 +40,11 @@ describe('fileRowActions', () => {
 });
 
 describe('folderRowActions', () => {
-  it('行上就两个：打开（主）+ 发送给…（次）', () => {
+  it('文件夹的主按钮是「下载」（下载里面的东西，2026-10-03 用户要求），第二个是「打开」', () => {
     const set = folderRowActions();
-    expect(set.inline.map((action) => action.key)).toEqual(['open', 'send']);
+    expect(set.inline.map((action) => action.key)).toEqual(['downloadAll', 'open', 'send']);
+    expect(primaryAction(set)?.key).toBe('downloadAll');
+    expect(primaryAction(set)?.label).toBe('下载');
   });
 
   it('重命名不再单独占一个行内按钮，进「更多」', () => {
@@ -57,7 +59,7 @@ describe('folderRowActions', () => {
     ]);
   });
 
-  it('文件夹没有下载/预览这类文件动作', () => {
+  it('文件夹没有单文件那种下载/预览/版本动作', () => {
     const keys = folderRowActions().menu.map((action) => action.key);
     expect(keys).not.toContain('download');
     expect(keys).not.toContain('preview');
@@ -66,11 +68,10 @@ describe('folderRowActions', () => {
 });
 
 describe('全局规则', () => {
-  it('任何一行都不会超过两个行内按钮（一屏几十行才不会糊成一片）', () => {
-    for (const kind of ['file', 'folder'] as const) {
-      expect(rowActions(kind).inline.length).toBeLessThanOrEqual(2);
-      expect(rowActions(kind, { canPreview: true }).inline.length).toBeLessThanOrEqual(2);
-    }
+  it('文件行最多两个行内按钮，文件夹行最多三个（打开 + 下载 + 发送给…）', () => {
+    expect(rowActions('file').inline.length).toBeLessThanOrEqual(2);
+    expect(rowActions('file', { canPreview: true }).inline.length).toBeLessThanOrEqual(2);
+    expect(rowActions('folder').inline.length).toBeLessThanOrEqual(3);
   });
 
   it('每行都恰好有一个主按钮（不能有零个，也不能有两个抢）', () => {

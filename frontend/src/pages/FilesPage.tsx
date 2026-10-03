@@ -52,6 +52,7 @@ import { ResponsiveSheet } from '../components/ResponsiveSheet';
 import { SendToDialog } from '../components/SendToDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { FolderTree } from '../components/FolderTree';
+import { FolderDownloadDialog } from '../components/FolderDownloadDialog';
 import { RowActions } from '../components/RowActions';
 import { canPreview } from '../services/filePreview';
 import type { RowActionKey } from '../features/files/rowActions';
@@ -132,6 +133,8 @@ export function FilesPage() {
   const [permTarget, setPermTarget] = useState<ShareTarget>(null);
   // 「发送给…」的目标（按人发送，AGENTS.md §14.3）
   const [sendTarget, setSendTarget] = useState<ShareTarget>(null);
+  // 「下载文件夹里的东西」的目标（2026-10-03：先列内容，再逐个下载）
+  const [folderDownloadTarget, setFolderDownloadTarget] = useState<Folder | null>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [keyword, setKeyword] = useState('');
@@ -263,6 +266,11 @@ export function FilesPage() {
   function handleRowAction(row: BrowseRow, key: RowActionKey) {
     if (key === 'open' && row.kind === 'folder') {
       navigate(`/files/${row.folder.id}`);
+      return;
+    }
+    if (key === 'downloadAll' && row.kind === 'folder') {
+      // 「下载文件夹里的东西」：先列内容再逐个下载（不打包，用户 2026-10-03 明确要求）
+      setFolderDownloadTarget(row.folder);
       return;
     }
     if (key === 'rename' && row.kind === 'folder') {
@@ -546,6 +554,7 @@ export function FilesPage() {
           onSend={(row) =>
             setSendTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
           }
+          onDownloadFolder={(row) => setFolderDownloadTarget(row.folder)}
           onDelete={handleRowDelete}
         />
       )}
@@ -587,6 +596,7 @@ export function FilesPage() {
           onSend={(row) =>
             setSendTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
           }
+          onDownloadFolder={(row) => setFolderDownloadTarget(row.folder)}
           onDelete={handleRowDelete}
         />
       )}
@@ -610,6 +620,11 @@ export function FilesPage() {
           if (previewTarget) void handleDownload(previewTarget);
         }}
         onClose={() => setPreviewTarget(null)}
+      />
+
+      <FolderDownloadDialog
+        folder={folderDownloadTarget}
+        onClose={() => setFolderDownloadTarget(null)}
       />
 
       <FileDetailDrawer

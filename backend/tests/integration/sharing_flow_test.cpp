@@ -110,7 +110,7 @@ class SharingTest : public ::testing::Test {
 
     // 真实实现：基于 permissions 表 + 文件夹继承
     checker_ = std::make_shared<GrantBasedPermissionChecker>(*permission_repo_, *folders_, *files_);
-    folders_service_ = std::make_shared<FolderService>(*folders_, *checker_);
+    folders_service_ = std::make_shared<FolderService>(*folders_, *files_, *checker_);
     files_service_ = std::make_shared<FileService>(*files_, *folders_, *storage_, *checker_,
                                                    FileServiceOptions{64ULL * kMiB});
     uploads_ = std::make_shared<UploadService>(*sessions_, *files_, *folders_, *users_, *storage_,

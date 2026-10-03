@@ -1,7 +1,10 @@
 #include "lan_file_hub/application/folder_service.h"
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -16,9 +19,9 @@ Error NotFound() {
 
 }  // namespace
 
-FolderService::FolderService(FolderRepository& folders,
+FolderService::FolderService(FolderRepository& folders, FileRepository& files,
                              const ResourcePermissionChecker& permissions)
-    : folders_(folders), permissions_(permissions) {}
+    : folders_(folders), files_(files), permissions_(permissions) {}
 
 Result<Folder> FolderService::EnsureRootFolder(const Actor& actor) {
   if (actor.user_id.empty()) {
@@ -227,6 +230,77 @@ Status FolderService::SoftDelete(const Actor& actor, std::string_view folder_id)
   spdlog::info("删除文件夹（软删除，含子树） | actor={} | folder_id={} | name={}", actor.user_id,
                folder.Value().id, folder.Value().name);
   return Status::Success();
+}
+
+// 目录（含子目录）里的全部文件（2026-10-03："一同下载文件夹里的东西"）。
+//
+// 为什么返回扁平清单而不是让前端自己逐层翻：一个是查询，另一个是几百次请求；
+// 前端拿到 file_id 后逐个走既有的"一次性票据 + 浏览器原生下载"，不打包、不占额外磁盘。
+Result<FolderFileList> FolderService::ListFilesRecursive(const Actor& actor,
+                                                         std::string_view folder_id) {
+  auto folder = LoadAccessible(actor, folder_id, ResourceAction::kRead);
+  if (!folder) {
+    return folder.GetError();
+  }
+  auto path_key = folders_.GetPathKey(folder.Value().id);
+  if (!path_key) {
+    return path_key.GetError();
+  }
+  // ListSubtree 按 path_key 排序：父目录一定在子目录之前，所以一趟就能算出相对路径
+  auto subtree = folders_.ListSubtree(path_key.Value());
+  if (!subtree) {
+    return subtree.GetError();
+  }
+
+  std::vector<std::string> folder_ids;
+  folder_ids.reserve(subtree.Value().size());
+  std::map<std::string, std::string> relative_paths;  // 目录 id → 相对被点目录的路径（自己＝空）
+  for (const Folder& node : subtree.Value()) {
+    folder_ids.push_back(node.id);
+    if (node.id == folder.Value().id) {
+      relative_paths[node.id] = "";
+      continue;
+    }
+    std::string parent_relative;
+    if (node.parent_id.has_value()) {
+      const auto parent = relative_paths.find(*node.parent_id);
+      if (parent != relative_paths.end()) {
+        parent_relative = parent->second;
+      }
+    }
+    relative_paths[node.id] =
+        parent_relative.empty() ? node.name : parent_relative + "/" + node.name;
+  }
+
+  auto files = files_.ListActiveByFolderIds(folder_ids);
+  if (!files) {
+    return files.GetError();
+  }
+
+  FolderFileList listing;
+  listing.file_count = files.Value().size();
+  for (const File& file : files.Value()) {
+    listing.total_bytes += file.size_bytes;
+  }
+  const std::size_t take = std::min(files.Value().size(), kFolderFileListLimit);
+  listing.truncated = files.Value().size() > take;
+  listing.items.reserve(take);
+  for (std::size_t index = 0; index < take; ++index) {
+    const File& file = files.Value()[index];
+    const auto relative = relative_paths.find(file.folder_id);
+    const std::string directory = relative != relative_paths.end() ? relative->second : "";
+    FolderFileEntry entry;
+    entry.file_id = file.id;
+    entry.name = file.original_name;
+    entry.path = directory.empty() ? file.original_name : directory + "/" + file.original_name;
+    entry.size_bytes = file.size_bytes;
+    listing.items.push_back(std::move(entry));
+  }
+  std::sort(listing.items.begin(), listing.items.end(),
+            [](const FolderFileEntry& left, const FolderFileEntry& right) {
+              return left.path < right.path;
+            });
+  return listing;
 }
 
 }  // namespace lan_file_hub

@@ -33,6 +33,12 @@ class FolderRepository {
 
   [[nodiscard]] Result<std::uint64_t> CountChildren(std::string_view parent_id);
 
+  /**
+   * 整棵子树（含自己）：靠物化路径 path_key 前缀匹配（有专门索引）。
+   * 打包下载一个文件夹时用它一次性拿到所有子目录（2026-10-03）。
+   */
+  [[nodiscard]] Result<std::vector<Folder>> ListSubtree(std::string_view path_key);
+
   // 按名字搜索自己的有效文件夹（2026-10-03，搜索功能）。
   // query 是**原始关键字**（子串匹配），通配符转义在仓储内部完成。
   [[nodiscard]] Result<std::vector<Folder>> SearchByOwner(std::string_view owner_id,

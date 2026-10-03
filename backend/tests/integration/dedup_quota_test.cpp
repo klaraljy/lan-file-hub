@@ -90,7 +90,7 @@ class DedupQuotaTest : public ::testing::Test {
     ASSERT_TRUE(storage.Ok()) << storage.GetError().message;
     storage_ = storage.Value();
 
-    folders_service_ = std::make_shared<FolderService>(*folders_, *permissions_);
+    folders_service_ = std::make_shared<FolderService>(*folders_, *files_, *permissions_);
 
     // 配额给得很小，方便测超限
     owner_ = MakeUser("quotaowner", 8 * kMiB);
