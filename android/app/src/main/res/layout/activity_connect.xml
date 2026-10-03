@@ -105,4 +105,20 @@
       android:layout_height="wrap_content"
       android:layout_marginTop="8dp"
       android:text="@string/backup_entry_button" />
+
+  <!-- 检查更新（2026-10-03 交接单 ①）：在 App 里就能查有没有新版，查到就交给系统下载。
+       ⛔ 最后一跳一定是系统安装器的「安装」按钮，静默安装做不到（侧载应用没有 INSTALL_PACKAGES）。 -->
+  <Button
+      android:id="@+id/check_update"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:text="@string/connect_update_check" />
+
+  <TextView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="4dp"
+      android:text="@string/connect_update_hint"
+      android:textSize="12sp" />
 </LinearLayout>

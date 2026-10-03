@@ -77,6 +77,20 @@ public final class ServerStore {
   }
 
   /**
+   * "用户最可能想连的那台电脑"：**最近用过**的那条（{@link #load} 已经按时间倒序排好）。
+   *
+   * <p>「检查更新」用它当服务器地址（2026-10-03 交接单 ①：读自己的构建号 → 问这台电脑有没有新版）。
+   * 为什么是"最近用过"而不是"在线的那条"：这只是一次几秒钟的请求，地址不对会立刻返回"连不上"，
+   * 没必要为一个低频操作再去做一轮探活；而"最近用过"的语义最接近用户心里那台电脑。
+   *
+   * <p>一条记录都没有时返回 null（调用方提示先「找电脑」）。
+   */
+  public static Server preferred(android.content.Context context) {
+    List<Server> servers = load(context);
+    return servers.isEmpty() ? null : servers.get(0);
+  }
+
+  /**
    * 把用户输入变成一台服务器的信息。允许只输 IP（最常见），也允许带端口或整条 URL：
    *
    * <pre>

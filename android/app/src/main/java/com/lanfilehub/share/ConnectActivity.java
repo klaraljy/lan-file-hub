@@ -2,8 +2,11 @@ package com.lanfilehub.share;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -31,6 +34,11 @@ import java.util.concurrent.Executors;
  *   ② 已知地址都不在线时**自动扫一遍当前网段**找电脑（{@link ServerDiscovery}），
  *      扫不到就按网络类型给出人话解释（流量连不上 / 可能是客户端隔离，请改用手机热点）。
  *
+ * <p>2026-10-03 第二轮（用户批准的交接单，构建号 5）：
+ *   ① 「检查更新」按钮 —— 在 App 里就能查有没有新版并交给系统下载（{@link AppUpdate}）；
+ *      ⛔ 最后一跳一定是系统安装器的「安装」，静默安装做不到，界面上也这么说；
+ *   ② **地址丢失自愈** —— 地址簿被系统清掉/卸载重装后，打开 App 自动找回上次那台电脑并明确告诉用户。
+ *
  * <p>不引 AndroidX：只用系统自带的 View/Activity，装到老手机上也不挑。
  */
 public class ConnectActivity extends Activity {
@@ -41,16 +49,31 @@ public class ConnectActivity extends Activity {
   private final ExecutorService probeExecutor = Executors.newSingleThreadExecutor();
   /** 扫网段单独一个线程池：它要跑几秒，不能把上面的探活队列堵住 */
   private final ExecutorService discoverExecutor = Executors.newSingleThreadExecutor();
+  /** 「检查更新」也单独一条：探活/扫网段在跑时也不能让它排队（一次网络请求，几秒） */
+  private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
 
   private ServerAdapter adapter;
   private ListView listView;
   private TextView emptyView;
   private TextView networkView;
   private TextView searchView;
+  private Button updateButton;
   private boolean probing;
   private boolean discovering;
   /** 同一网络里只自动扫一次（用户手动点「找电脑」不受限制） */
   private String autoScannedFor;
+  /** 这次自动扫描是为了**找回丢失的地址**（地址簿空 / 全都不在线）—— 找到了要跟用户说一声 */
+  private boolean recovering;
+  /** 正在检查更新（防止连点） */
+  private boolean checkingUpdate;
+  /** 检查到的新版（点按钮时直接下它，不用再查一次） */
+  private AppUpdate.Release pendingUpdate;
+  /** 本机已装的构建号（底部版本行与"检查更新"用的是同一个数） */
+  private int installedBuild;
+  /** 已经检查过一次更新（按钮文案据此变化） */
+  private boolean updateChecked;
+  /** 上次检查更新问的是哪台电脑（换了电脑就作废，见 onResume） */
+  private String updateCheckedFor = "";
 
   private final Runnable refreshTask =
       new Runnable() {
@@ -71,6 +94,7 @@ public class ConnectActivity extends Activity {
     emptyView = findViewById(R.id.empty_hint);
     networkView = findViewById(R.id.network_state);
     searchView = findViewById(R.id.search_state);
+    updateButton = findViewById(R.id.check_update);
     listView.setAdapter(adapter);
 
     listView.setOnItemClickListener(
@@ -89,6 +113,8 @@ public class ConnectActivity extends Activity {
     // 相册备份（2026-10-03）：把手机照片存到电脑上
     findViewById(R.id.open_backup).setOnClickListener(
         view -> startActivity(new Intent(this, BackupActivity.class)));
+    // 检查更新（2026-10-03 用户批准的交接单 ①）：在 App 里就能查/就更，不依赖网页
+    updateButton.setOnClickListener(view -> onUpdateButton());
   }
 
   @Override
@@ -99,6 +125,15 @@ public class ConnectActivity extends Activity {
     handler.post(refreshTask);
     updateNetworkLine();
     showVersion();
+    // 换了一台电脑（换了网络就会换）→ 上次查到的"有新版"不作数了，按钮退回「检查更新」
+    ServerStore.Server preferred = ServerStore.preferred(this);
+    String preferredKey = preferred == null ? "" : preferred.key();
+    if (!preferredKey.equals(updateCheckedFor)) {
+      pendingUpdate = null;
+      updateChecked = false;
+      updateCheckedFor = "";
+    }
+    applyUpdateButtonLabel();
   }
 
   @Override
@@ -112,6 +147,7 @@ public class ConnectActivity extends Activity {
     super.onDestroy();
     probeExecutor.shutdownNow();
     discoverExecutor.shutdownNow();
+    updateExecutor.shutdownNow();
   }
 
   /** 顶部那行"当前网络"：换网络（WiFi ↔ 热点 ↔ 流量）后回到这个页面就会更新 */
@@ -134,9 +170,124 @@ public class ConnectActivity extends Activity {
       long code = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P
           ? info.getLongVersionCode()
           : info.versionCode;
+      installedBuild = (int) code;
       versionView.setText(getString(R.string.connect_version_line, info.versionName, code));
     } catch (android.content.pm.PackageManager.NameNotFoundException missing) {
       versionView.setText("");
+    }
+  }
+
+  // ---- 检查更新（2026-10-03 用户批准的交接单 ①）--------------------------------
+
+  /**
+   * 「检查更新」按钮：没查过就查一次，查到新版就**下它**。
+   *
+   * <p>为什么两段式：用户点一次是"问有没有新版"，有新版时按钮变成「更新到构建号 N」，
+   * 再点才是下载 —— 不能让"随便点一下"就开始下载安装包。
+   */
+  private void onUpdateButton() {
+    if (checkingUpdate) {
+      return;
+    }
+    if (pendingUpdate != null) {
+      startUpdateDownload(pendingUpdate);
+      return;
+    }
+    startUpdateCheck();
+  }
+
+  /** 问一次电脑上有没有新版（后台线程 + 主线程回报）；没有可用地址时提示先「找电脑」 */
+  private void startUpdateCheck() {
+    final ServerStore.Server server = ServerStore.preferred(this);
+    if (server == null) {
+      toast(R.string.connect_update_no_server);
+      return;
+    }
+    checkingUpdate = true;
+    updateButton.setEnabled(false);
+    updateButton.setText(R.string.connect_update_checking);
+    final String askedKey = server.key();
+    final int current = installedBuild > 0 ? installedBuild : (int) currentVersionCode();
+    updateExecutor.execute(
+        () -> {
+          final AppUpdate.CheckResult result = AppUpdate.check(server, current);
+          handler.post(
+              () -> {
+                checkingUpdate = false;
+                updateButton.setEnabled(true);
+                updateChecked = true;
+                updateCheckedFor = askedKey;
+                pendingUpdate = result.updateAvailable ? result.release : null;
+                applyUpdateButtonLabel();
+                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
+              });
+        });
+  }
+
+  /** 按钮文案：没查过 = 「检查更新」；有新版 = 「更新到构建号 N」；已最新 = 灰着写明已是最新 */
+  private void applyUpdateButtonLabel() {
+    if (pendingUpdate != null) {
+      updateButton.setEnabled(true);
+      updateButton.setText(getString(R.string.connect_update_to, pendingUpdate.versionCode));
+      return;
+    }
+    updateButton.setText(
+        updateChecked
+            ? getString(R.string.connect_update_latest, installedBuild)
+            : getString(R.string.connect_update_check));
+    updateButton.setEnabled(!updateChecked);
+  }
+
+  /**
+   * 下新版安装包：交给系统下载管理器（和网页里点「更新」是同一条路）。
+   *
+   * <p>⛔ <b>不会静默安装</b>：侧载应用没有 {@code INSTALL_PACKAGES}，装到最后一步必须由用户在
+   * 系统安装器上点「安装」。所以提示里就把这句话说清楚，别让用户以为点完就自动装好了。
+   */
+  private void startUpdateDownload(AppUpdate.Release release) {
+    final ServerStore.Server server = ServerStore.preferred(this);
+    if (server == null) {
+      toast(R.string.connect_update_no_server);
+      return;
+    }
+    String url = release.downloadUrl(server.baseUrl());
+    String fileName = DownloadNaming.sanitize(release.fileName);
+    if (fileName == null || !fileName.toLowerCase(java.util.Locale.US).endsWith(".apk")) {
+      fileName = "lan-file-hub.apk";
+    }
+    try {
+      DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+      request.setMimeType("application/vnd.android.package-archive");
+      request.setTitle(fileName);
+      request.setDescription(getString(R.string.connect_update_downloading, release.versionCode));
+      request.setNotificationVisibility(
+          DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+      // 覆盖同一个文件名，避免"下载(1).apk"越堆越多
+      request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+      DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+      if (manager == null) {
+        toast(R.string.connect_update_download_failed);
+        return;
+      }
+      manager.enqueue(request);
+      Toast.makeText(this, getString(R.string.connect_update_downloading, release.versionCode),
+          Toast.LENGTH_LONG).show();
+      Toast.makeText(this, R.string.connect_update_last_step, Toast.LENGTH_LONG).show();
+    } catch (Exception error) {
+      toast(R.string.connect_update_download_failed);
+    }
+  }
+
+  /** 只在读取构建号失败时兜底用（正常情况下 {@link #installedBuild} 已经有值） */
+  private long currentVersionCode() {
+    try {
+      android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        return info.getLongVersionCode();
+      }
+      return info.versionCode;
+    } catch (Exception error) {
+      return 0;
     }
   }
 
@@ -175,7 +326,8 @@ public class ConnectActivity extends Activity {
     if (servers.isEmpty()) {
       probing = false;
       // 一条记录都没有：直接开始自动查找，用户不用先"添加电脑"
-      startDiscovery(false);
+      // （2026-10-03 交接单 ②：这正是"卸载重装 / 被系统清数据后地址丢失"的场景，找到要跟用户说一声）
+      startDiscovery(false, true);
       return;
     }
     probeExecutor.execute(
@@ -193,7 +345,7 @@ public class ConnectActivity extends Activity {
           probing = false;
           // 已知地址全都不在线（换网络后旧地址就死了）→ 自动扫一遍当前网段
           if (!anyOnline) {
-            startDiscovery(false);
+            startDiscovery(false, true);
           }
         });
   }
@@ -204,6 +356,17 @@ public class ConnectActivity extends Activity {
    * @param manual 用户自己点的「找电脑」：即使这个网络已经自动扫过也要再扫一次
    */
   private void startDiscovery(boolean manual) {
+    startDiscovery(manual, false);
+  }
+
+  /**
+   * 扫当前网段找电脑。
+   *
+   * @param manual             用户自己点的「找电脑」：即使这个网络已经自动扫过也要再扫一次
+   * @param healLostAddresses  这次扫描是**为了找回丢失的地址**（地址簿空 / 已知地址全离线）：
+   *                           找到了要明确告诉用户"已自动找回上次那台电脑"（2026-10-03 交接单 ②）
+   */
+  private void startDiscovery(boolean manual, boolean healLostAddresses) {
     if (discovering) {
       return;
     }
@@ -225,6 +388,8 @@ public class ConnectActivity extends Activity {
     }
     autoScannedFor = scanKey;
     discovering = true;
+    // 这次自动扫描要不要"找回"：地址簿本来就是空的，或者全都不在线（用户手动点的不算 —— 他知道自己在干嘛）
+    recovering = healLostAddresses && !manual;
     searchView.setText(getString(R.string.connect_searching, 0, 0));
 
     discoverExecutor.execute(
@@ -254,15 +419,25 @@ public class ConnectActivity extends Activity {
             }
           }
           final boolean changed = added;
+          // 找回来了没有（这次就是为了找回地址才扫的，见 startDiscovery 的 healLostAddresses 参数）
+          final boolean healed = recovering && !found.isEmpty();
           final String scanRange = ownIp.substring(0, ownIp.lastIndexOf('.') + 1) + "1~254";
           final String portsText = ports.length > 1 ? (ports[0] + "、" + ports[1]) : String.valueOf(ports[0]);
           handler.post(
               () -> {
                 discovering = false;
+                recovering = false;
                 if (changed) {
                   reloadServers();
                 }
-                if (!found.isEmpty()) {
+                if (healed) {
+                  // 2026-10-03 交接单 ②：地址簿被系统清掉/卸载重装后，用户最需要知道的是
+                  // "上次那台电脑自己回来了"，而不是一串扫描数字（AGENTS §14.1）
+                  searchView.setText(
+                      getString(R.string.connect_healed, found.get(0).host, String.valueOf(found.get(0).port))
+                          + "\n"
+                          + getString(R.string.connect_found, found.size()));
+                } else if (!found.isEmpty()) {
                   searchView.setText(getString(R.string.connect_found, found.size()));
                 } else {
                   // 把"扫了什么"也说清楚：用户能据此判断是不是网络问题（AGENTS §14.1）

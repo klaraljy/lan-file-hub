@@ -36,6 +36,19 @@
   <string name="web_download_failed">下载没能开始，请改用右上角的「在浏览器打开」再试</string>
   <string name="web_download_unsupported">这种内容的下载要改用右上角的「在浏览器打开」</string>
   <string name="connect_search_scope">（已扫过 %2$s 的 %3$s 端口；本机地址 %1$s）</string>
+  <!-- 地址丢失自愈（2026-10-03 交接单 ②）：地址簿被系统清掉/卸载重装后，自己把电脑找回来 -->
+  <string name="connect_healed">这台手机上的电脑地址没了（卸载重装、或系统清理过 App 数据）—— 已自动找回上次那台电脑：%1$s:%2$s</string>
+
+  <!-- 检查更新（2026-10-03 交接单 ①）：⛔ 不承诺静默安装，最后一跳必须是系统安装器的「安装」 -->
+  <string name="connect_update_check">检查更新</string>
+  <string name="connect_update_checking">正在问电脑上有没有新版…</string>
+  <string name="connect_update_to">更新到构建号 %1$d</string>
+  <string name="connect_update_latest">已是最新（构建号 %1$d）</string>
+  <string name="connect_update_no_server">还没连过电脑。先点「找电脑」找到电脑，再检查更新。</string>
+  <string name="connect_update_downloading">正在下载构建号 %1$d 的安装包，完成后在通知栏点一下</string>
+  <string name="connect_update_last_step">最后一步要你自己点：通知栏点一下 → 系统安装界面点「安装」。Android 不允许 App 自己装自己，所以这一步省不掉。</string>
+  <string name="connect_update_download_failed">下载没能开始，请确认电脑开着、手机和电脑在同一个 WiFi/热点</string>
+  <string name="connect_update_hint">更新包从电脑上下载（几百 KB），装的时候手机上会问一次「安装」，点一下就完成，文件和账号都还在。</string>
 
   <string name="connect_online">在线 · 点一下就能用</string>
   <string name="connect_offline">离线 · 电脑没开，或它换了网络（地址会变，长按这条可以改）</string>
