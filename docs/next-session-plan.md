@@ -77,3 +77,63 @@
 - 每件事：跑定向验证 → 提交（一个逻辑变化一个提交）→ 更新对应 `docs/`。
 - 全部做完：把这几项作为阶段 ⑥/⑦ 写进 `AGENTS.md` §15 表；`docs/guide.md`（大白话说明）补"手机 App 怎么连电脑"。
 - 仍未验证的老账（不要写成已完成）：真机 APK、手机热点下的扫码路径、5 GB 大文件、iOS 端接收、TSan/UBSan、生产 HTTPS、局域网长时间压测。
+
+---
+
+## 6. 邀请制注册（用户 2026-10-02 明确要求：不是所有人都能注册，要通过管理员邀请）
+
+**目标形态**：默认仍允许自助注册（个人自用方便）；**关掉自助注册后**，只有拿到管理员邀请链接的人才能注册。
+
+**数据（迁移 `0010_invites.sql`）**
+
+```sql
+CREATE TABLE invites (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash   TEXT NOT NULL UNIQUE,      -- 只存哈希（与分享链接同口径，明文只在创建时返回一次）
+  note         TEXT NOT NULL DEFAULT '',  -- 备注：这条邀请是给谁的
+  created_by   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at   TIMESTAMPTZ,               -- NULL = 不过期
+  max_uses     INT NOT NULL DEFAULT 1,
+  used_count   INT NOT NULL DEFAULT 0,
+  revoked_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**配置**：`ALLOW_SELF_REGISTRATION`（默认 `true`；便携包/公司场景设 `false`）。关闭后
+`POST /api/v1/auth/register` **必须**带有效邀请，否则 `403 INVITE_REQUIRED`。
+
+**接口**
+
+| 方法 | 路径 | 谁 | 说明 |
+|---|---|---|---|
+| POST | `/api/v1/admin/invites` | ADMIN | 建邀请（`note` / `expires_in_seconds` / `max_uses`），**明文 token 只在这里返回一次** |
+| GET | `/api/v1/admin/invites` | ADMIN | 列表：状态、已用次数、过期时间（**不含 token**） |
+| DELETE | `/api/v1/admin/invites/{id}` | ADMIN | 撤销（幂等） |
+| GET | `/api/v1/public/invites/{token}` | 公开 | 校验：有效 → 返回备注与剩余次数；无效/过期/撤销 → 404 / 410 |
+| POST | `/api/v1/auth/register` | 公开 | 新增可选 `invite_token`；自助注册关闭时必须提供；**在同一事务里**消耗一次使用次数 |
+
+**安全**：token 只存哈希；注册接口已有速率限制（沿用）；建邀请与用邀请都写审计日志；
+`note` 与 token 不得进日志正文。
+
+**前端**：管理员页面新增「邀请」区（生成 → 弹窗展示**链接 + 二维码**，复用 `ShareLinkBox`，
+不绕过它）；注册页支持 `?invite=<token>`（显示"你是被邀请来的"，提交时带上 token）；
+自助注册关闭且无邀请时，注册页明确写"本实例需要邀请才能注册，请找管理员要链接"。
+
+**测试**：单元（过期 / 次数用尽 / 撤销 / 哈希不落明文）、集成（开关开与关、带与不带 token、
+重复使用同一 token 的行为）、前端单测（注册页三种状态）、e2e 可选。
+
+---
+
+## 7. 手机 App（用户 2026-10-02 选定的简单方案）
+
+**已明确回答用户**：现在那个 APK 还是 09-23 的"手机当服务器"快传版，**没有**连电脑的能力。
+
+**做什么**（§3 有更细的验收）：新增「连接」页（IP 历史 + 在线状态 + App 内 WebView 打开电脑网页），
+保留「快传」页。要点：`SharedPreferences` 存 `host:port` 与最后使用时间；
+`GET /health/live` 1.5 秒超时探活（页面可见时每 10 秒刷新 + 下拉刷新）；
+输入允许省略协议与端口（自动补 `http://` 与 `:9180`）；WebView 开 JS / DOM storage / cookie 持久化。
+
+**构建与交付**：`.\scripts\build-android.ps1` → 新 APK 落到 `android\`，按项目规则提交产物，
+`docs/android.md` 同步更新；请用户真机安装验证（添加 IP → 显示在线 → App 内登录 → 看到文件列表）。
