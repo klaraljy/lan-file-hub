@@ -71,6 +71,12 @@ export interface PersistedUploadTask {
   chunkSize: number;
   totalChunks: number;
   createdAt: number;
+  /** 上传失败被记下来（2026-10-03）：刷新后还要能看到"哪个文件没传成功" */
+  failed?: boolean;
+  /** 失败原因（给用户看的那句话） */
+  error?: string;
+  /** 在源文件夹里的相对路径（文件夹上传时用来分辨是哪个子目录的文件） */
+  displayPath?: string;
 }
 
 export interface UploadTask {
@@ -93,6 +99,8 @@ export interface UploadTask {
   needsFile?: boolean;
   /** 速度提示（字节/秒） */
   rate?: number;
+  /** 显示用的完整路径（文件夹上传时是「子目录/文件名」） */
+  displayPath?: string;
 }
 
 export const TERMINAL_TASK_STATUSES: UploadTaskStatus[] = ['completed', 'failed', 'cancelled'];

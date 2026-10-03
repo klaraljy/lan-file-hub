@@ -31,6 +31,12 @@ import {
   summarizePlan,
 } from '../features/uploads/folderUpload';
 import { useUploads } from '../features/uploads/useUploads';
+import {
+  RUNNING_STATUSES,
+  attentionTitle,
+  isAttention,
+  orderTasks,
+} from '../features/uploads/taskView';
 import { foldersApi } from '../services/foldersApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { UploadTask, UploadTaskStatus } from '../types/upload';
@@ -66,8 +72,6 @@ const STATUS_COLORS: Record<UploadTaskStatus, string> = {
 };
 
 /** 正在跑（含在算哈希与重试）的状态 */
-const RUNNING_STATUSES: UploadTaskStatus[] = ['uploading', 'hashing', 'retrying'];
-
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -121,6 +125,9 @@ function DesktopUploadPanel({
   );
   const overallPercent = totalBytes > 0 ? Math.round((doneBytes / totalBytes) * 100) : 0;
   const needsFile = tasks.filter((task) => task.needsFile);
+  // 「哪个失败了」必须一眼看到（2026-10-03 用户实测反馈）：单列一段，不跟几十条任务混在一起
+  const attention = orderTasks(tasks).filter((task) => isAttention(task));
+  const ordered = orderTasks(tasks);
 
   /**
    * 上传一个文件夹：先算计划 → 让用户确认 → 逐级建目录 → 分文件传进对应目录。
@@ -188,18 +195,19 @@ function DesktopUploadPanel({
       }
 
       // ② 按目标目录分组入队；⛔ 不 await（enqueue 要等传完），进度交给任务面板
-      const byFolder = new Map<string, File[]>();
+      const byFolder = new Map<string, { dirPath: string; files: File[] }>();
       for (const item of plan.files) {
         const target = item.dirPath === '' ? folderId : folderIds.get(item.dirPath);
         if (!target) continue;
-        const list = byFolder.get(target) ?? [];
-        list.push(item.file);
-        byFolder.set(target, list);
+        const group = byFolder.get(target) ?? { dirPath: item.dirPath, files: [] };
+        group.files.push(item.file);
+        byFolder.set(target, group);
       }
       let queued = 0;
-      for (const [target, files] of byFolder) {
-        void uploadTo(files, target);
-        queued += files.length;
+      for (const [target, group] of byFolder) {
+        // displayPrefix 让任务列表显示「原版/1.mp4」，用户能分辨是哪个子目录的文件
+        void uploadTo(group.files, target, group.dirPath || undefined);
+        queued += group.files.length;
       }
       message.success(
         `已加入上传队列：${queued} 个文件（进度看下面的「上传任务」）`,
@@ -302,6 +310,38 @@ function DesktopUploadPanel({
           />
         )}
 
+        {/* 「哪个失败了」一眼可见（2026-10-03 用户实测反馈）：失败单独列一段，带文件名、大小、原因、重试 */}
+        {attention.length > 0 && (
+          <Alert
+            type="error"
+            showIcon
+            message={attentionTitle(attention)}
+            description={
+              <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                {attention.map((task) => (
+                  <span key={task.id}>
+                    <b>{task.displayPath ?? task.name}</b>（{formatBytes(task.size)}）
+                    {task.error ? ` —— ${task.error}` : ''}{' '}
+                    {task.needsFile ? (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => pickResumeFile(setResumeTarget, resumeInputRef.current, task.id)}
+                      >
+                        重新选择文件继续
+                      </Button>
+                    ) : (
+                      <Button size="small" type="link" onClick={() => void retry(task.id)}>
+                        重试
+                      </Button>
+                    )}
+                  </span>
+                ))}
+              </Space>
+            }
+          />
+        )}
+
         {tasks.length > 0 && (
           <>
             <div
@@ -321,14 +361,14 @@ function DesktopUploadPanel({
                   {formatBytes(doneBytes)} / {formatBytes(totalBytes)}
                 </Typography.Text>
                 <Button size="small" onClick={clearFinished}>
-                  清除已结束
+                  清除已完成
                 </Button>
               </div>
             </div>
 
             <Progress percent={overallPercent} size="small" />
 
-            {tasks.map((task) => (
+            {ordered.map((task) => (
               <TaskRow
                 key={task.id}
                 task={task}
@@ -383,13 +423,7 @@ function MobileUploadBar({
   const current = active[0] ?? tasks.find((task) => task.status === 'queued') ?? null;
   const needsFile = tasks.filter((task) => task.needsFile);
   // 需要用户处理的任务（暂停 / 失败 / 需要重新选文件）：这时不能把进度条收起来
-  const attention = tasks.filter(
-    (task) =>
-      task.needsFile ||
-      task.status === 'paused' ||
-      task.status === 'failed' ||
-      task.status === 'expired',
-  );
+  const attention = tasks.filter((task) => isAttention(task));
   const busy = active.length > 0 || tasks.some((task) => task.status === 'queued');
   // 全部结束（只剩"已完成/已取消"）时收起成一条细提示，别一直挂着占地方
   const showSummaryOnly = !busy && attention.length === 0 && tasks.length > 0;
@@ -524,7 +558,7 @@ function MobileUploadBar({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Typography.Text strong ellipsis style={{ flex: 1, minWidth: 0 }}>
-              {current ? current.name : `上传任务（${tasks.length}）`}
+              {current ? (current.displayPath ?? current.name) : `上传任务（${tasks.length}）`}
             </Typography.Text>
             <Button
               size="small"
@@ -550,7 +584,7 @@ function MobileUploadBar({
           />
           {attention.length > 0 && (
             <Typography.Text type="warning" style={{ fontSize: 12 }}>
-              有 {attention.length} 个任务需要处理（暂停 / 失败 / 需要重新选择文件），点「全部」查看
+              有 {attention.length} 个文件没传成功或已暂停，点「全部」查看并重试
             </Typography.Text>
           )}
         </div>
@@ -572,6 +606,37 @@ function MobileUploadBar({
             description="选择同一个文件即可只补传缺失的分块。"
           />
         )}
+        {/* 手机上「哪个失败了」也要一眼看到（2026-10-03） */}
+        {attention.length > 0 && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={attentionTitle(attention)}
+            description={
+              <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                {attention.map((task) => (
+                  <span key={task.id}>
+                    <b>{task.displayPath ?? task.name}</b>（{formatBytes(task.size)}）
+                    {task.error ? ` —— ${task.error}` : ''}{' '}
+                    {task.needsFile ? (
+                      <Button
+                        type="link"
+                        onClick={() => pickResumeFile(setResumeTarget, resumeInputRef.current, task.id)}
+                      >
+                        重新选择文件继续
+                      </Button>
+                    ) : (
+                      <Button type="link" onClick={() => void retry(task.id)}>
+                        重试
+                      </Button>
+                    )}
+                  </span>
+                ))}
+              </Space>
+            }
+          />
+        )}
         <div
           style={{
             display: 'flex',
@@ -584,10 +649,10 @@ function MobileUploadBar({
             {active.length} 进行中 / 共 {tasks.length}
           </Typography.Text>
           <Button size="small" onClick={clearFinished}>
-            清除已结束
+            清除已完成
           </Button>
         </div>
-        {tasks.map((task) => (
+        {orderTasks(tasks).map((task) => (
           <TaskRow
             key={task.id}
             task={task}
@@ -654,7 +719,7 @@ function TaskRow({
           }}
         >
           <Typography.Text ellipsis style={{ maxWidth: mobile ? '100%' : 320, minWidth: 0 }}>
-            {task.name}
+            {task.displayPath ?? task.name}
           </Typography.Text>
           <Tag color={STATUS_COLORS[task.status]} style={{ whiteSpace: 'nowrap' }}>
             {STATUS_LABELS[task.status]}

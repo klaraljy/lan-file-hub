@@ -88,6 +88,19 @@ export interface EnqueueOptions {
   chunkSize?: number;
   /** 是否计算整文件 SHA-256（默认计算；关掉则只依赖分块哈希 + 服务端重算） */
   computeWholeFileHash?: boolean;
+  /** 显示用的来源前缀（文件夹上传时是相对子目录，例如「原版」），只为让用户在任务列表里分得清 */
+  displayPrefix?: string;
+}
+
+/**
+ * 本地失败记录的 key 前缀（2026-10-03）。
+ * 会话都没建起来就失败的任务没有 upload_id，用 `local:<前端任务 id>` 当主键，
+ * 这样刷新页面后「哪个文件没传成功」还看得见（用户实测反馈"想看哪个失败了，根本看不了"）。
+ */
+const LOCAL_RECORD_PREFIX = 'local:';
+
+function localRecordKey(taskId: string): string {
+  return LOCAL_RECORD_PREFIX + taskId;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -198,6 +211,7 @@ export class UploadManager {
         status: 'queued',
         percent: 0,
         attempts: 0,
+        displayPath: options.displayPrefix ? `${options.displayPrefix}/${file.name}` : undefined,
       };
       this.tasks.set(id, { task, file, inflight: new Map(), paused: false });
       this.emit(id);
@@ -261,6 +275,7 @@ export class UploadManager {
   /**
    * 刷新页面后恢复：用 upload_id 向后端查询真实状态。
    * 已经完成的会话从本地清理；其余标记为 paused + needsFile，等用户重新选文件。
+   * 上次**失败**的记录（含只存在本地的 `local:` 记录）恢复成 failed，刷新不丢。
    */
   async restore(folderId: string): Promise<UploadTask[]> {
     let persisted: PersistedUploadTask[] = [];
@@ -272,12 +287,59 @@ export class UploadManager {
 
     const restored: UploadTask[] = [];
     for (const record of persisted) {
+      // 只存在本地的失败记录：连会话都没建起来，直接还原成"失败 + 要重新选文件"
+      if (record.uploadId.startsWith(LOCAL_RECORD_PREFIX)) {
+        const id = `restored-${record.uploadId}`;
+        const task: UploadTask = {
+          id,
+          folderId: record.folderId,
+          name: record.name,
+          size: record.size,
+          chunkSize: record.chunkSize,
+          totalChunks: record.totalChunks,
+          completedChunks: [],
+          status: 'failed',
+          percent: 0,
+          attempts: 0,
+          error: record.error,
+          needsFile: true,
+          displayPath: record.displayPath,
+        };
+        this.tasks.set(id, { task, inflight: new Map(), paused: false });
+        this.emit(id);
+        restored.push(task);
+        continue;
+      }
+
       let status: UploadStatusResponse;
       try {
         status = await this.api.status(record.uploadId);
       } catch (error) {
-        // 会话已不存在（过期清理 / 被别处取消）：本地记录也删掉
         if (error instanceof ApiError && (error.code === 'UPLOAD_NOT_FOUND' || error.code === 'UPLOAD_EXPIRED')) {
+          // 会话没了：没失败过的记录清掉；**失败过的一定留着** ——
+          // 那个文件确实没传上去，用户还得知道（2026-10-03）
+          if (record.failed) {
+            const id = `restored-${record.uploadId}`;
+            const failedTask: UploadTask = {
+              id,
+              folderId: record.folderId,
+              name: record.name,
+              size: record.size,
+              chunkSize: record.chunkSize,
+              totalChunks: record.totalChunks,
+              completedChunks: [],
+              status: 'failed',
+              percent: 0,
+              attempts: 0,
+              error: record.error,
+              needsFile: true,
+              displayPath: record.displayPath,
+            };
+            this.tasks.set(id, { task: failedTask, inflight: new Map(), paused: false });
+            this.emit(id);
+            restored.push(failedTask);
+            continue;
+          }
           await this.safeStoreRemove(record.uploadId);
           continue;
         }
@@ -300,10 +362,13 @@ export class UploadManager {
         chunkSize: status.chunk_size,
         totalChunks: status.total_chunks,
         completedChunks,
-        status: 'paused',
+        // 失败过就还原成失败（带上原因），用户点「重试」能接着传
+        status: record.failed ? 'failed' : 'paused',
         percent: percentOf(status.received_bytes, status.total_size),
         attempts: 0,
+        error: record.error,
         needsFile: true,
+        displayPath: record.displayPath,
       };
       this.tasks.set(id, { task, inflight: new Map(), paused: true });
       this.emit(id);
@@ -319,6 +384,8 @@ export class UploadManager {
     if (entry.task.uploadId) {
       await this.safeStoreRemove(entry.task.uploadId);
     }
+    // 本地失败记录也要一起清掉，否则刷新后它又冒出来
+    await this.safeStoreRemove(localRecordKey(id));
     this.tasks.delete(id);
   }
 
@@ -457,7 +524,7 @@ export class UploadManager {
           totalChunks: session.total_chunks,
           size: session.total_size,
         };
-        // 会话已创建：先持久化，刷新后才能恢复
+        // 会话已创建：先持久化，刷新后才能恢复；上一次的"本地失败记录"同时作废
         await this.safeStorePut({
           uploadId: session.upload_id,
           folderId: entry.task.folderId,
@@ -466,7 +533,9 @@ export class UploadManager {
           chunkSize: session.chunk_size,
           totalChunks: session.total_chunks,
           createdAt: this.now(),
+          displayPath: entry.task.displayPath,
         });
+        await this.safeStoreRemove(localRecordKey(id));
         this.emit(id);
       }
 
@@ -514,9 +583,31 @@ export class UploadManager {
         this.patch(id, { status: 'paused' });
         return;
       }
-      this.patch(id, { status: 'failed', error: errorMessage(error) });
+      const message = errorMessage(error);
+      this.patch(id, { status: 'failed', error: message });
+      // 失败也要落盘（2026-10-03）：刷新后用户还得能看见"哪个文件没传成功、为什么"
+      await this.rememberFailure(id, message);
       this.onError?.(this.tasks.get(id)?.task ?? entry.task, error);
     }
+  }
+
+  /** 记下失败任务：有 upload_id 就用它当主键，没有就用 `local:<任务 id>` */
+  private async rememberFailure(id: string, message: string): Promise<void> {
+    const entry = this.tasks.get(id);
+    if (!entry) return;
+    const task = entry.task;
+    await this.safeStorePut({
+      uploadId: task.uploadId ?? localRecordKey(id),
+      folderId: task.folderId,
+      name: task.name,
+      size: task.size,
+      chunkSize: task.chunkSize,
+      totalChunks: task.totalChunks,
+      createdAt: this.now(),
+      failed: true,
+      error: message,
+      displayPath: task.displayPath,
+    });
   }
 
   private async uploadMissingChunks(
@@ -597,6 +688,11 @@ export class UploadManager {
   private async finish(id: string, file?: FileMeta): Promise<void> {
     const entry = this.tasks.get(id);
     if (!entry) return;
+    // 传完了：本地的"待续传 / 失败"记录一并清掉（调用方通常已经清过 upload_id 那条）
+    if (entry.task.uploadId) {
+      await this.safeStoreRemove(entry.task.uploadId);
+    }
+    await this.safeStoreRemove(localRecordKey(id));
     this.patch(id, { status: 'completed', percent: 100, error: undefined });
     if (file) {
       this.onCompleted?.(this.tasks.get(id)?.task ?? entry.task, file);

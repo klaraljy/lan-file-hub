@@ -3,6 +3,7 @@
  * 并在上传完成后刷新目录查询。
  */
 import { useQueryClient } from '@tanstack/react-query';
+import { App as AntApp } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { fileKeys } from '../files/useFiles';
@@ -12,9 +13,11 @@ import { createUploadTaskStore, type UploadTaskStore } from '../../services/uplo
 import type { FileMeta } from '../../types/file';
 import type { UploadTask } from '../../types/upload';
 import { UploadManager } from './uploadManager';
+import { isDismissible, uploadErrorMessage } from './taskView';
 
 export function useUploads(folderId: string | undefined) {
   const queryClient = useQueryClient();
+  const { message } = AntApp.useApp();
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const storeRef = useRef<UploadTaskStore | null>(null);
   const [storeReady, setStoreReady] = useState(false);
@@ -51,9 +54,17 @@ export function useUploads(folderId: string | undefined) {
       onCompleted: (_task: UploadTask, _file: FileMeta) => {
         void refreshListing();
       },
+      /**
+       * 失败要**主动弹出来**（2026-10-03 用户实测："刚刚失败了，我想看看哪个失败了，发现根本就看不了"）。
+       * 之前失败只在任务列表里有一个小红标，一批几十个文件时根本找不到是哪个。
+       */
+      onError: (task: UploadTask, error: unknown) => {
+        const label = task.displayPath ?? task.name;
+        message.error(`「${label}」上传失败：${uploadErrorMessage(error)}`);
+      },
     });
-    // refreshListing 只依赖 queryClient，稳定
-  }, [refreshListing]);
+    // refreshListing 只依赖 queryClient，message 由 antd 保证稳定
+  }, [refreshListing, message]);
 
   // 持久化存储是异步打开的，就绪后替换到 manager 上
   useEffect(() => {
@@ -100,11 +111,12 @@ export function useUploads(folderId: string | undefined) {
   /**
    * 传到**指定目录**（2026-10-03「上传文件夹」用）：
    * 目录结构先由调用方建好（`foldersApi`），这里只负责把一批文件放进那个目录。
+   * `displayPrefix` 是源文件夹里的相对子目录，只为让任务列表显示「原版/1.mp4」这种可分辨的名字。
    */
   const uploadTo = useCallback(
-    async (files: File[], targetFolderId: string) => {
+    async (files: File[], targetFolderId: string, displayPrefix?: string) => {
       if (!targetFolderId || files.length === 0) return;
-      await manager.enqueue(files, { folderId: targetFolderId });
+      await manager.enqueue(files, { folderId: targetFolderId, displayPrefix });
       await refreshListing();
     },
     [manager, refreshListing],
@@ -130,8 +142,9 @@ export function useUploads(folderId: string | undefined) {
     [manager, refreshListing],
   );
 
+  /** 只清「已完成 / 已取消」：**失败和过期的必须留着**，否则用户再也看不到是哪个文件没传成功 */
   const clearFinished = useCallback(() => {
-    setTasks((previous) => previous.filter((task) => !isFinished(task.status)));
+    setTasks((previous) => previous.filter((task) => !isDismissible(task.status)));
   }, []);
 
   return {
@@ -148,6 +161,4 @@ export function useUploads(folderId: string | undefined) {
   };
 }
 
-export function isFinished(status: UploadTask['status']): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
+export { isFinished, isDismissible, uploadErrorMessage } from './taskView';

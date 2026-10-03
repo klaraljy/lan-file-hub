@@ -402,7 +402,7 @@ describe('UploadManager 暂停与取消', () => {
 });
 
 describe('UploadManager.restore（刷新后恢复）', () => {
-  it('用 upload_id 从后端恢复未完成任务，并标出需要重新选文件', async () => {
+  it('失败的任务刷新后**仍然是失败**，并保留服务端已完成的分块（能接着传）', async () => {
     const api = new FakeApi();
     // 3 个分块全部失败（不可重试错误），这样后端一个分块都没收到
     api.failNextPuts = 3;
@@ -429,25 +429,96 @@ describe('UploadManager.restore（刷新后恢复）', () => {
 
     expect(restored).toHaveLength(1);
     expect(restored[0]!.uploadId).toBe(uploadId);
-    expect(restored[0]!.status).toBe('paused');
+    // 2026-10-03：失败过的任务不再被"洗白"成 paused —— 用户要能看见它没传成功
+    expect(restored[0]!.status).toBe('failed');
+    expect(restored[0]!.error).toBe('冲突');
     expect(restored[0]!.needsFile).toBe(true);
     expect(restored[0]!.completedChunks).toEqual([0]);
     expect(restored[0]!.size).toBe(12);
   });
 
-  it('后端已完成或已不存在的会话会被清理，不再恢复', async () => {
+  it('没失败过的会话在后端已不存在时被清理，不再恢复', async () => {
     const api = new FakeApi();
-    api.failNextPuts = 1;
-    api.failWith = () => new ApiError('CHUNK_CONFLICT', '冲突', '');
     const { manager, store } = makeManager(api);
-
-    const [task] = await manager.enqueue([makeFile('gone.bin', 4)], { folderId: 'folder-1' });
-    const uploadId = task!.uploadId!;
-    api.chunks.delete(uploadId); // 后端已过期清理
+    // 直接塞一条"进行中"的本地记录，然后让后端"找不到这个会话"
+    await store.put({
+      uploadId: 'upload-gone',
+      folderId: 'folder-1',
+      name: 'gone.bin',
+      size: 4,
+      chunkSize: 4,
+      totalChunks: 1,
+      createdAt: 0,
+    });
 
     const restored = await manager.restore('folder-1');
     expect(restored).toEqual([]);
     expect(await store.listAll()).toEqual([]);
+  });
+
+  it('失败的任务即使服务端会话没了也留着（那个文件确实没传上去）', async () => {
+    const api = new FakeApi();
+    const { manager, store } = makeManager(api);
+    await store.put({
+      uploadId: 'upload-gone',
+      folderId: 'folder-1',
+      name: 'gone.bin',
+      size: 4,
+      chunkSize: 4,
+      totalChunks: 1,
+      createdAt: 0,
+      failed: true,
+      error: '你的并发上传任务已达上限，请先完成或取消其他上传',
+    });
+
+    const restored = await manager.restore('folder-1');
+
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.status).toBe('failed');
+    expect(restored[0]!.name).toBe('gone.bin');
+    expect(restored[0]!.error).toContain('并发上传任务已达上限');
+    expect(restored[0]!.needsFile).toBe(true);
+    // 记录保留，下次刷新还看得见
+    expect(await store.listAll()).toHaveLength(1);
+  });
+
+  it('连会话都没建起来就失败的任务（本地记录）刷新后也能看到', async () => {
+    const api = new FakeApi();
+    api.failWith = () => new ApiError('STORAGE_BUSY', '你的并发上传任务已达上限，请先完成或取消其他上传', '');
+    // 前 5 次建会话都失败：重试 4 次后放弃，任务进入 failed
+    let busy = 5;
+    const inner = api.create.bind(api);
+    api.create = async (input) => {
+      if (busy > 0) {
+        busy -= 1;
+        throw api.failWith();
+      }
+      return inner(input);
+    };
+    const first = makeManager(api);
+
+    const [task] = await first.manager.enqueue([makeFile('ep1.mp4', 8)], { folderId: 'folder-1' });
+    expect(task!.status).toBe('failed');
+    expect(task!.uploadId).toBeUndefined(); // 会话没建起来
+
+    const records = await first.store.listAll();
+    expect(records).toHaveLength(1);
+    expect(records[0]!.uploadId.startsWith('local:')).toBe(true);
+    expect(records[0]!.failed).toBe(true);
+
+    const restoredManager = new UploadManager({
+      api,
+      store: first.store,
+      onTaskChange: () => undefined,
+      hashChunk: async () => 'c'.repeat(64),
+      hashWholeFile: async () => 'a'.repeat(64),
+      sleep: async () => undefined,
+    });
+    const restored = await restoredManager.restore('folder-1');
+
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.name).toBe('ep1.mp4');
+    expect(restored[0]!.status).toBe('failed');
   });
 
   it('只恢复当前目录的任务', async () => {
