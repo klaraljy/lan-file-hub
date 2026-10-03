@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildShareUrl } from '../src/services/publicUrl';
+import { buildShareUrl, setServerLanAddress } from '../src/services/publicUrl';
 
 /**
  * 分享链接必须"别人手机点得开"。
@@ -16,6 +16,40 @@ const LAN_URL = 'http://192.168.43.240:5173';
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  setServerLanAddress('');
+});
+
+describe('buildShareUrl（服务端上报的当前局域网地址优先）', () => {
+  it('服务端上报了地址：用它拼链接，即使注入值是旧网络的地址', () => {
+    // 场景：开机时是校园网 192.168.43.240，后来换成手机热点 10.200.18.61
+    vi.stubEnv('VITE_LFH_LAN_URL', 'http://192.168.43.240:5180');
+    setServerLanAddress('10.200.18.61');
+
+    const result = buildShareUrl('tok', { origin: 'http://127.0.0.1:5180', hostname: '127.0.0.1' });
+
+    expect(result.url).toBe('http://10.200.18.61:5180/s/tok');
+    expect(result.warning).toContain('10.200.18.61');
+  });
+
+  it('端口取当前页面自己的（便携包 9180 / 开发 5173 都对）', () => {
+    setServerLanAddress('192.168.1.9');
+
+    expect(buildShareUrl('t', { origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' }).url).toBe(
+      'http://192.168.1.9:9180/s/t',
+    );
+    expect(buildShareUrl('t', { origin: 'http://localhost:5173', hostname: 'localhost' }).url).toBe(
+      'http://192.168.1.9:5173/s/t',
+    );
+  });
+
+  it('服务端没探到地址（空串）时：退回启动脚本注入的地址', () => {
+    vi.stubEnv('VITE_LFH_LAN_URL', 'http://192.168.43.240:5173');
+    setServerLanAddress('');
+
+    expect(buildShareUrl('t', { origin: 'http://127.0.0.1:5173', hostname: '127.0.0.1' }).url).toBe(
+      'http://192.168.43.240:5173/s/t',
+    );
+  });
 });
 
 describe('buildShareUrl', () => {

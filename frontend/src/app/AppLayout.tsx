@@ -21,13 +21,14 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import { MobileTabBar, TAB_BAR_HEIGHT } from './MobileTabBar';
 import { navItemsForRole, selectedNavKey, type NavItem } from './navigation';
 import { useAuth } from '../features/auth/AuthContext';
 import { usePresenceHeartbeat } from '../features/presence/usePresence';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { startServerLanRefresh } from '../services/networkApi';
 
 const { Header, Sider, Content } = Layout;
 
@@ -50,6 +51,11 @@ export function AppLayout() {
   const isMobile = useIsMobile();
   // 在线状态心跳：登录后自动开始（每 30 秒），登出后自动停（阶段 ⑤）
   usePresenceHeartbeat();
+  // 当前局域网地址：打开 App 拉一次，之后定时/窗口聚焦/网络恢复时刷新。
+  // 用户换网络（校园网 ↔ 手机热点）后，分享链接要跟着变，不能停在打开页面时的旧地址。
+  useEffect(() => {
+    startServerLanRefresh();
+  }, []);
 
   async function handleLogout() {
     await logout();

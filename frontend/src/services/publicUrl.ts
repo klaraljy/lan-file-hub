@@ -7,11 +7,29 @@
  *
  * 规则：
  *   1. 本来就是局域网地址 / 域名访问 → 直接用当前 origin，没问题；
- *   2. 用本机地址打开、且启动脚本注入了局域网地址 → 换成局域网地址，并提示已经换过；
- *   3. 用本机地址打开、又没有局域网地址 → 只能给本机地址，但必须警告"别人手机打不开"。
+ *   2. 用本机地址打开、且**服务端上报了当前局域网地址** → 换成它（换网络后立刻生效，
+ *      不用重启；见 `services/networkApi.ts`）；
+ *   3. 用本机地址打开、服务端没给（拉取失败），但启动脚本注入了局域网地址 → 用注入值；
+ *   4. 都没有 → 只能给本机地址，但必须警告"别人手机打不开"。
  */
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/**
+ * 服务端上报的"当前局域网地址"（只有 IP，没有协议/端口）。
+ * 由 `services/networkApi.ts` 在打开 App、定时与窗口获得焦点时刷新，
+ * 所以用户换网络之后这里会自动变成新地址。
+ */
+let serverLanAddress = '';
+
+/** 写入服务端上报的地址（空串 = 服务端没探到，例如没有默认路由） */
+export function setServerLanAddress(address: string): void {
+  serverLanAddress = address.trim();
+}
+
+export function getServerLanAddress(): string {
+  return serverLanAddress;
+}
 
 /** 只取判断需要的两个字段，注入进来是为了能单测（jsdom 的 location 改不动） */
 export interface ShareUrlLocation {
@@ -32,6 +50,20 @@ function injectedLanUrl(): string {
   return raw.trim().replace(/\/+$/, '');
 }
 
+/**
+ * 用"服务端上报的当前局域网 IP + 当前页面的协议与端口"拼出基地址。
+ * 端口取当前页面自己的（便携包 9180、开发 5173），所以两种形态都正确。
+ */
+function serverLanBase(location: ShareUrlLocation): string {
+  if (!serverLanAddress) return '';
+  try {
+    const { protocol, port } = new URL(location.origin);
+    return `${protocol}//${serverLanAddress}${port ? `:${port}` : ''}`;
+  } catch {
+    return '';
+  }
+}
+
 /** 拼出"发给别人、别人手机能打开"的分享链接 */
 export function buildShareUrl(
   token: string,
@@ -42,6 +74,14 @@ export function buildShareUrl(
 
   if (!LOCAL_HOSTNAMES.has(hostname)) {
     return { url: `${origin}${path}` };
+  }
+
+  const fromServer = serverLanBase(location);
+  if (fromServer) {
+    return {
+      url: `${fromServer}${path}`,
+      warning: `你正在用本机地址（127.0.0.1）打开页面，已自动换成当前的局域网地址（${serverLanAddress}）—— 这样别人手机才能打开；换网络后这个地址会自动更新，不用重启。`,
+    };
   }
 
   const lanUrl = injectedLanUrl();
@@ -55,6 +95,6 @@ export function buildShareUrl(
   return {
     url: `${origin}${path}`,
     warning:
-      '这条链接在别人手机上打不开。请改用局域网地址重新打开本页面（启动脚本会打印「📱 手机访问」那个地址），再生成链接。',
+      '这条链接在别人手机上打不开。请改用局域网地址重新打开本页面（启动脚本会打印「手机打开」那个地址），再生成链接。',
   };
 }

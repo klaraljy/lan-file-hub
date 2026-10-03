@@ -30,6 +30,7 @@ import {
   useShares,
 } from '../features/sharing/useSharing';
 import { buildShareUrl } from '../services/publicUrl';
+import { refreshServerLanAddress } from '../services/networkApi';
 import { ResponsiveSheet } from './ResponsiveSheet';
 import { ShareLinkBox } from './ShareLinkBox';
 import type { FileMeta } from '../types/file';
@@ -84,6 +85,9 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
         expiresInSeconds: values.expires ? Number(values.expires) : undefined,
         maxDownloads: values.maxDownloads ? Number(values.maxDownloads) : undefined,
       });
+      // 先问一次服务端"当前的局域网地址是多少"：用户可能刚换过网络（WiFi ↔ 热点），
+      // 用打开页面时的旧地址拼出来的链接，对方手机打不开
+      await refreshServerLanAddress();
       const built = buildShareUrl(created.token ?? '');
       setCreatedToken({ token: created.token ?? '', url: built.url, warning: built.warning });
       message.success('分享链接已创建，请立刻复制（只显示这一次）');

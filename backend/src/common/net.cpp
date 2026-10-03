@@ -134,4 +134,43 @@ bool IsListenPortAvailable(std::uint16_t port) {
   return status == PortStatus::kAvailable || status == PortStatus::kUnknown;
 }
 
+std::string GetPrimaryLocalAddress() {
+  SocketRuntime runtime;
+  if (!runtime.ok()) {
+    return {};
+  }
+  const SocketHandle probe = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (probe == kInvalidSocket) {
+    return {};
+  }
+
+  // 目标地址只用来让内核查路由表：UDP 的 connect 不会发出任何数据包，
+  // 所以这里**不需要真的能访问外网**，只要有默认路由即可（局域网热点场景满足）。
+  sockaddr_in target{};
+  target.sin_family = AF_INET;
+  target.sin_port = htons(53);
+  if (::inet_pton(AF_INET, "8.8.8.8", &target.sin_addr) != 1) {
+    CloseSocket(probe);
+    return {};
+  }
+
+  std::string result;
+  if (::connect(probe, reinterpret_cast<sockaddr*>(&target), sizeof(target)) == 0) {
+    sockaddr_in local{};
+#if defined(_WIN32)
+    int length = sizeof(local);
+#else
+    socklen_t length = sizeof(local);
+#endif
+    if (::getsockname(probe, reinterpret_cast<sockaddr*>(&local), &length) == 0) {
+      char text[INET_ADDRSTRLEN] = {};
+      if (::inet_ntop(AF_INET, &local.sin_addr, text, sizeof(text)) != nullptr) {
+        result = text;
+      }
+    }
+  }
+  CloseSocket(probe);
+  return result;
+}
+
 }  // namespace lan_file_hub

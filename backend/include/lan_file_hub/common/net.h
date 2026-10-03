@@ -7,6 +7,7 @@
 #define LAN_FILE_HUB_COMMON_NET_H
 
 #include <cstdint>
+#include <string>
 
 namespace lan_file_hub {
 
@@ -29,6 +30,17 @@ PortStatus CheckListenPort(std::uint16_t port);
 
 // 只有 kAvailable 与 kUnknown 视为「可以启动」。
 bool IsListenPortAvailable(std::uint16_t port);
+
+// 本机在局域网里的地址 —— 手机 / 其它电脑该用的那个（分享链接、启动面板都要用）。
+//
+// 做法：建一个 UDP 套接字并 `connect` 到一个外部地址（**UDP connect 不发任何数据包**，
+// 只是让内核按当前路由表选出出口网卡），再 `getsockname()` 读出本机地址。
+// 好处：跨平台、不必枚举网卡，拿到的正是「当前有默认路由的那块网卡」——
+// 用户换 WiFi / 换手机热点之后，**下一次调用就是新地址**，服务不用重启
+// （用户 2026-10-02 反馈：换网络后地址不变，难道每次都要重启）。
+//
+// 没有默认路由时（例如只接了交换机、没有网关）返回空串，调用方自行回退。
+[[nodiscard]] std::string GetPrimaryLocalAddress();
 
 }  // namespace lan_file_hub
 

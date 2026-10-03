@@ -27,6 +27,7 @@ import {
 } from '../features/sharing/useSharing';
 import { useUserLookup } from '../features/sharing/useUserLookup';
 import { buildShareUrl } from '../services/publicUrl';
+import { refreshServerLanAddress } from '../services/networkApi';
 import { ResponsiveSheet } from './ResponsiveSheet';
 import { ShareLinkBox } from './ShareLinkBox';
 import type { UserLookupItem } from '../services/usersApi';
@@ -89,6 +90,8 @@ export function SendToDialog({ open, onClose, resourceId, resourceName, isFolder
         permission: 'READ',
         expiresInSeconds: LINK_EXPIRES_SECONDS,
       });
+      // 先刷新一次服务端上报的局域网地址（用户可能刚换过网络，旧地址对方打不开）
+      await refreshServerLanAddress();
       setLink(buildShareUrl(created.token ?? ''));
       message.success('链接已生成，请立刻复制发给对方（只显示这一次）');
     } catch (error) {
