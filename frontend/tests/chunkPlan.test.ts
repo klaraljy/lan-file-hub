@@ -3,11 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_PARALLEL_CHUNKS,
   RETRY_DELAYS_MS,
+  SLOT_WAIT_DELAYS_MS,
   isRetryableError,
+  isStorageBusyError,
   missingChunks,
   planChunks,
   retryDelayMs,
   runWithConcurrency,
+  slotWaitDelayMs,
 } from '../src/features/uploads/chunkPlan';
 
 describe('planChunks', () => {
@@ -66,6 +69,8 @@ describe('重试策略', () => {
     expect(isRetryableError({ code: 'NETWORK_ERROR' })).toBe(true);
     expect(isRetryableError({ code: 'STORAGE_UNAVAILABLE' })).toBe(true);
     expect(isRetryableError({ code: 'RATE_LIMITED' })).toBe(true);
+    // 并发名额已满（2026-10-03）：等一会儿就能传，不该直接判失败
+    expect(isRetryableError({ code: 'STORAGE_BUSY' })).toBe(true);
     for (const status of [408, 429, 502, 503, 504]) {
       expect(isRetryableError({ status })).toBe(true);
     }
@@ -93,6 +98,21 @@ describe('重试策略', () => {
   it('超过次数上限后不再自动重试', () => {
     expect(retryDelayMs(RETRY_DELAYS_MS.length + 1, () => 0)).toBeNull();
     expect(retryDelayMs(0, () => 0)).toBeNull();
+  });
+
+  it('等名额的退避比普通重试更长，且超限后不再等', () => {
+    expect(slotWaitDelayMs(1, () => 0)).toBe(SLOT_WAIT_DELAYS_MS[0]);
+    expect(slotWaitDelayMs(4, () => 0)).toBe(SLOT_WAIT_DELAYS_MS[3]);
+    expect(slotWaitDelayMs(4, () => 0)!).toBeGreaterThan(RETRY_DELAYS_MS[2]!);
+    expect(slotWaitDelayMs(SLOT_WAIT_DELAYS_MS.length + 1, () => 0)).toBeNull();
+    expect(slotWaitDelayMs(0, () => 0)).toBeNull();
+  });
+
+  it('只有 STORAGE_BUSY 才算「名额已满」', () => {
+    expect(isStorageBusyError({ code: 'STORAGE_BUSY' })).toBe(true);
+    expect(isStorageBusyError({ code: 'STORAGE_UNAVAILABLE' })).toBe(false);
+    expect(isStorageBusyError({ code: 'QUOTA_EXCEEDED' })).toBe(false);
+    expect(isStorageBusyError(null)).toBe(false);
   });
 });
 

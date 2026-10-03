@@ -25,11 +25,14 @@ import { hashBlob, hashFile } from '../../services/sha256';
 import type { UploadTaskStore } from '../../services/uploadTaskStore';
 import {
   MAX_PARALLEL_CHUNKS,
+  MAX_PARALLEL_FILES,
   isRetryableError,
+  isStorageBusyError,
   missingChunks,
   planChunks,
   retryDelayMs,
   runWithConcurrency,
+  slotWaitDelayMs,
   type ChunkSlice,
 } from './chunkPlan';
 
@@ -64,6 +67,8 @@ export interface UploadManagerOptions {
   onError?: (task: UploadTask, error: unknown) => void;
   /** 默认 4（docs/frontend.md §5.2） */
   chunkConcurrency?: number;
+  /** 同时在传的文件数上限，默认 3（必须小于后端单账号并发会话上限，见 chunkPlan） */
+  maxParallelFiles?: number;
   /** 计算分块哈希的实现，测试可替换 */
   hashChunk?: (blob: Blob) => Promise<string>;
   /** 计算整文件哈希的实现，测试可替换 */
@@ -133,12 +138,17 @@ export class UploadManager {
   private readonly onCompleted?: (task: UploadTask, file: FileMeta) => void;
   private readonly onError?: (task: UploadTask, error: unknown) => void;
   private readonly chunkConcurrency: number;
+  private readonly maxParallelFiles: number;
   private readonly hashChunk: (blob: Blob) => Promise<string>;
   private readonly hashWholeFile: NonNullable<UploadManagerOptions['hashWholeFile']>;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
   private readonly tasks = new Map<string, RuntimeTask>();
   private sequence = 0;
+  /** 正在传的文件数（持有名额的任务数） */
+  private activeFiles = 0;
+  /** 排队等名额的任务：名额释放时按 FIFO 直接转交 */
+  private readonly slotWaiters: Array<() => void> = [];
 
   constructor(options: UploadManagerOptions) {
     this.api = options.api;
@@ -147,6 +157,7 @@ export class UploadManager {
     this.onCompleted = options.onCompleted;
     this.onError = options.onError;
     this.chunkConcurrency = options.chunkConcurrency ?? MAX_PARALLEL_CHUNKS;
+    this.maxParallelFiles = Math.max(1, options.maxParallelFiles ?? MAX_PARALLEL_FILES);
     this.hashChunk = options.hashChunk ?? hashBlob;
     this.hashWholeFile = options.hashWholeFile ?? hashFile;
     this.sleep = options.sleep ?? defaultSleep;
@@ -169,7 +180,8 @@ export class UploadManager {
 
   /**
    * 加入一批文件并立即开始上传。
-   * 多文件之间并发上传，文件内部的多个分块也并发（上限 chunkConcurrency）。
+   * 文件之间并发上传（上限 maxParallelFiles，排队等名额），
+   * 文件内部的多个分块也并发（上限 chunkConcurrency）。
    */
   async enqueue(files: File[], options: EnqueueOptions): Promise<UploadTask[]> {
     const created: UploadTask[] = [];
@@ -192,10 +204,10 @@ export class UploadManager {
       created.push(task);
     }
 
-    // 文件之间并发；单个文件的失败不影响其他文件
+    // 文件之间并发（受名额限制）；单个文件的失败不影响其他文件
     await Promise.all(
       created.map((task) =>
-        this.run(task.id, { computeWholeFileHash: options.computeWholeFileHash !== false }),
+        this.runQueued(task.id, { computeWholeFileHash: options.computeWholeFileHash !== false }),
       ),
     );
     return created.map((task) => this.tasks.get(task.id)?.task ?? task);
@@ -243,7 +255,7 @@ export class UploadManager {
     }
     entry.paused = false;
     this.patch(id, { status: 'queued', error: undefined, attempts: 0 });
-    await this.run(id, { computeWholeFileHash: false });
+    await this.runQueued(id, { computeWholeFileHash: false });
   }
 
   /**
@@ -312,6 +324,73 @@ export class UploadManager {
 
   // ---- 内部实现 ------------------------------------------------------------
 
+  /**
+   * 先拿到「同时上传文件数」的名额，再真正开跑。
+   *
+   * ⛔ 名额是 **manager 级**（不是单次 enqueue 级）：一次选 20 个文件、
+   *   或者文件夹上传按子目录分批入队，都共用同一个上限，
+   *   否则每批各自并发 3 个，加起来照样把后端单账号的会话上限撞爆。
+   *   后端超限时返回 STORAGE_BUSY，用户看到的是「失败」（2026-10-03 用户实测：
+   *   一批视频里 EP1.mp4 直接失败，EP2.mp4 却传上去了）。
+   */
+  private async runQueued(id: string, options: { computeWholeFileHash: boolean }): Promise<void> {
+    await this.acquireFileSlot();
+    try {
+      const entry = this.tasks.get(id);
+      // 排队期间被暂停 / 取消的：拿到名额也不开工
+      if (!entry || entry.paused || entry.task.status === 'cancelled') {
+        return;
+      }
+      await this.run(id, options);
+    } finally {
+      this.releaseFileSlot();
+    }
+  }
+
+  private async acquireFileSlot(): Promise<void> {
+    if (this.activeFiles < this.maxParallelFiles) {
+      this.activeFiles += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      this.slotWaiters.push(resolve);
+    });
+  }
+
+  private releaseFileSlot(): void {
+    const next = this.slotWaiters.shift();
+    if (next) {
+      next();  // 名额直接转交给下一个等待者，activeFiles 不变
+      return;
+    }
+    this.activeFiles = Math.max(0, this.activeFiles - 1);
+  }
+
+  /**
+   * 建上传会话。撞上「服务端并发名额已满」（STORAGE_BUSY）时**排队等**，
+   * 而不是把这个文件判失败 —— 同一个账号在两台设备上一起传就会撞上。
+   * 等满 SLOT_WAIT_DELAYS_MS 还拿不到名额才把错误抛给用户。
+   */
+  private async createSessionWithSlotWait(
+    id: string,
+    input: Parameters<UploadsApiLike['create']>[0],
+  ): Promise<CreateUploadResponse> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.api.create(input);
+      } catch (error) {
+        const entry = this.tasks.get(id);
+        const wait = isStorageBusyError(error as { code?: string }) ? slotWaitDelayMs(attempt + 1) : null;
+        if (entry?.paused || wait === null) {
+          throw error;
+        }
+        this.patch(id, { status: 'queued', error: '服务器同时在传的文件已满，正在排队等待…' });
+        await this.sleep(wait);
+        this.patch(id, { status: 'initiated', error: undefined });
+      }
+    }
+  }
+
   private async run(id: string, options: { computeWholeFileHash: boolean }): Promise<void> {
     const entry = this.tasks.get(id);
     if (!entry || !entry.file) {
@@ -362,7 +441,7 @@ export class UploadManager {
         }
 
         this.patch(id, { status: 'initiated' });
-        session = await this.api.create({
+        session = await this.createSessionWithSlotWait(id, {
           folderId: entry.task.folderId,
           name: entry.task.name,
           size: file.size,

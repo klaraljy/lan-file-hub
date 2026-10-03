@@ -8,14 +8,36 @@
 /** 同时在传的分块数量上限（docs/frontend.md §5.2） */
 export const MAX_PARALLEL_CHUNKS = 4;
 
+/**
+ * 同时在传的**文件**数量上限（2026-10-03 用户实测后加）。
+ *
+ * 后端对单个账号的并发上传会话有硬上限（`MAX_CONCURRENT_UPLOADS_PER_USER`，默认 4），
+ * 超出的建会话请求会被直接拒绝 —— 前端必须自己排队。
+ * 之前是一次选 20 个文件就并发建 20 个会话，第 5 个开始报
+ * 「你的并发上传任务已达上限」，用户看到的是大片「失败」。
+ * 这里取 3（< 后端 4），留一个名额给手机端 / 另一个标签页。
+ */
+export const MAX_PARALLEL_FILES = 3;
+
 /** 自动重试的退避时间（docs/frontend.md §5.6） */
 export const RETRY_DELAYS_MS = [500, 1000, 2000] as const;
+
+/**
+ * 等「上传名额」的退避时间（2026-10-03）。
+ * 比普通分块重试等得久：要让的是**别的文件传完**，不是网络抖动。
+ */
+export const SLOT_WAIT_DELAYS_MS = [1000, 2000, 4000, 8000] as const;
 
 /** 可重试的 HTTP 状态码（docs/frontend.md §5.4） */
 const RETRYABLE_STATUS = new Set([408, 429, 502, 503, 504]);
 
-/** 可重试的错误码：网络问题与服务端暂时不可用 */
-const RETRYABLE_CODES = new Set(['NETWORK_ERROR', 'RATE_LIMITED', 'STORAGE_UNAVAILABLE']);
+/** 可重试的错误码：网络问题、服务端暂时不可用、并发名额已满 */
+const RETRYABLE_CODES = new Set([
+  'NETWORK_ERROR',
+  'RATE_LIMITED',
+  'STORAGE_UNAVAILABLE',
+  'STORAGE_BUSY',
+]);
 
 export interface ChunkSlice {
   index: number;
@@ -77,6 +99,23 @@ export function retryDelayMs(attempt: number, random: () => number = Math.random
   }
   const base = RETRY_DELAYS_MS[attempt - 1]!;
   // 加 0~20% 抖动，避免大量请求同时重试
+  return Math.round(base * (1 + random() * 0.2));
+}
+
+/** 是不是「服务端并发上传名额已满」（STORAGE_BUSY）：该等名额，不该判失败 */
+export function isStorageBusyError(error: RetryableLike | null | undefined): boolean {
+  return error?.code === 'STORAGE_BUSY';
+}
+
+/**
+ * 第 attempt 次等名额前的等待时间（attempt 从 1 开始）。
+ * 超过表长返回 null：等太久就不等了，交给用户自己重试。
+ */
+export function slotWaitDelayMs(attempt: number, random: () => number = Math.random): number | null {
+  if (attempt < 1 || attempt > SLOT_WAIT_DELAYS_MS.length) {
+    return null;
+  }
+  const base = SLOT_WAIT_DELAYS_MS[attempt - 1]!;
   return Math.round(base * (1 + random() * 0.2));
 }
 

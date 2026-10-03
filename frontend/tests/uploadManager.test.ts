@@ -170,7 +170,10 @@ class FakeApi implements UploadsApiLike {
   }
 }
 
-function makeManager(api: FakeApi, overrides: Partial<{ concurrency: number }> = {}) {
+function makeManager(
+  api: FakeApi,
+  overrides: Partial<{ concurrency: number; maxParallelFiles: number }> = {},
+) {
   const store = new MemoryUploadTaskStore();
   const updates: UploadTask[] = [];
   const completed: FileMeta[] = [];
@@ -180,6 +183,7 @@ function makeManager(api: FakeApi, overrides: Partial<{ concurrency: number }> =
     onTaskChange: (task) => updates.push(task),
     onCompleted: (_task, file) => completed.push(file),
     chunkConcurrency: overrides.concurrency ?? 4,
+    maxParallelFiles: overrides.maxParallelFiles,
     // 分块哈希用固定值：这里测的是编排，不是哈希本身
     hashChunk: async () => 'c'.repeat(64),
     hashWholeFile: async () => 'a'.repeat(64),
@@ -458,5 +462,101 @@ describe('UploadManager.restore（刷新后恢复）', () => {
     const restored = await manager.restore('folder-A');
     expect(restored).toHaveLength(1);
     expect(restored[0]!.folderId).toBe('folder-A');
+  });
+});
+
+/**
+ * 2026-10-03 用户实测：一次选一批视频，EP1.mp4 直接「失败 —— 你的并发上传任务已达上限」。
+ * 原因是前端把一批文件全部并发丢出去，后端单账号并发会话上限（默认 4）一撞就拒。
+ */
+describe('UploadManager 文件级排队（避开后端并发上限）', () => {
+  it('一批文件同时最多只传 maxParallelFiles 个', async () => {
+    const api = new FakeApi();
+    const originalPut = api.putChunk.bind(api);
+    const live = new Set<string>();
+    let maxLive = 0;
+    api.putChunk = async (uploadId, index, data, chunkSha256, options) => {
+      live.add(uploadId);
+      maxLive = Math.max(maxLive, live.size);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      try {
+        return await originalPut(uploadId, index, data, chunkSha256, options);
+      } finally {
+        live.delete(uploadId);
+      }
+    };
+
+    const { manager, completed } = makeManager(api, { maxParallelFiles: 2 });
+    const files = Array.from({ length: 6 }, (_, i) => makeFile(`v${i}.bin`, 8));
+    const tasks = await manager.enqueue(files, { folderId: 'folder-1' });
+
+    expect(tasks.every((task) => task.status === 'completed')).toBe(true);
+    expect(completed).toHaveLength(6);
+    // 全部传完，但任意时刻同时在传的文件不超过 2 个
+    expect(maxLive).toBeLessThanOrEqual(2);
+  });
+
+  it('名额是 manager 级的，分批入队也共用同一个上限', async () => {
+    const api = new FakeApi();
+    const originalCreate = api.create.bind(api);
+    let liveCreates = 0;
+    let maxLiveCreates = 0;
+    api.create = async (input) => {
+      liveCreates += 1;
+      maxLiveCreates = Math.max(maxLiveCreates, liveCreates);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return await originalCreate(input);
+      } finally {
+        liveCreates -= 1;
+      }
+    };
+
+    const { manager } = makeManager(api, { maxParallelFiles: 1 });
+    // 模拟文件夹上传：按子目录分批 enqueue，两批同时发出去
+    await Promise.all([
+      manager.enqueue([makeFile('a1.bin', 4), makeFile('a2.bin', 4)], { folderId: 'folder-1' }),
+      manager.enqueue([makeFile('b1.bin', 4), makeFile('b2.bin', 4)], { folderId: 'folder-1' }),
+    ]);
+
+    expect(maxLiveCreates).toBe(1);
+  });
+
+  it('撞上「并发上传任务已达上限」会排队重试，而不是判失败', async () => {
+    const api = new FakeApi();
+    const { manager } = makeManager(api);
+    const innerCreate = api.create.bind(api);
+    let busyLeft = 2;
+    let attempts = 0;
+    api.create = async (input) => {
+      attempts += 1;
+      if (busyLeft > 0) {
+        busyLeft -= 1;
+        throw new ApiError('STORAGE_BUSY', '你的并发上传任务已达上限，请先完成或取消其他上传', '');
+      }
+      return innerCreate(input);
+    };
+
+    const [task] = await manager.enqueue([makeFile('ep1.mp4', 8)], { folderId: 'folder-1' });
+
+    expect(task!.status).toBe('completed');
+    expect(attempts).toBe(3); // 前两次被拒，第三次成功
+  });
+
+  it('排队期间被取消的任务不会白开一个会话', async () => {
+    const api = new FakeApi();
+    const { manager } = makeManager(api, { maxParallelFiles: 1 });
+
+    const pending = manager.enqueue(
+      [makeFile('first.bin', 20), makeFile('second.bin', 4)],
+      { folderId: 'folder-1' },
+    );
+    const [, second] = manager.list();
+    await manager.cancel(second!.id);
+    await pending;
+
+    // 第二个文件在排队时就被取消，因此只建了第一个文件的会话
+    expect(api.createCalls).toBe(1);
+    expect(manager.get(second!.id)!.status).toBe('cancelled');
   });
 });
