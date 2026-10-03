@@ -402,6 +402,21 @@ Range: bytes=0-499
 | 合法 `Range` | **206 Partial Content** + `Content-Range: bytes 0-499/1234` |
 | `Range` 起点越界 | **416** + `Content-Range: bytes */1234` |
 
+**三种访问方式都必须能用**（2026-10-03 修过一个真 bug，见下）：
+
+| 方式 | 说明 |
+|---|---|
+| 会话令牌（`Authorization: Bearer`） | 常规 API 客户端；权限按当前用户判定 |
+| 一次性票据（`?ticket=`，**不带** Authorization） | 浏览器原生下载（`<a href>` 带不了头），大文件流式落盘 |
+| 两者同时带 | 允许；票据只在与文件匹配时才被采信，否则按会话令牌走 |
+
+> ⛔ **踩过的坑**：Drogon 的 `Attributes::get<T>()` 在键不存在时**不会抛异常**（直接解引用 `end()`），
+> 于是"带会话令牌下载"被误判成"票据不匹配"→ **403**（`票据 + 令牌同时带` 也一起中招）。
+> 修法是先 `attributes()->find()` 再 `get()`。这类未定义行为**不能用 try/catch 兜**。
+> 回归验证：`scripts\verify-download-paths.ps1`（四条路径：只用令牌 / 只用票据 / 两者都带 /
+> 拿 A 的票据下 B 必须 403）—— 项目里的 GoogleTest 都在服务层，覆盖不到 HTTP 层，
+> 这个脚本就是这一层的把关口。
+
 `Content-Disposition` 按 RFC 6266 生成。含非 ASCII 文件名时同时给出 ASCII 回退名与
 `filename*=UTF-8''<百分号编码>`，保证响应头始终是合法 ASCII：
 

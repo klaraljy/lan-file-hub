@@ -62,16 +62,20 @@ void RespondError(const std::function<void(const drogon::HttpResponsePtr&)>& cal
 
 // 用「下载票据」访问时，票据必须与本次请求的文件（以及版本）一致——防止拿 A 的票据去下 B。
 // 没有票据属性就是普通会话令牌访问，直接放行（鉴权已经由 AuthFilter 做过）。
+//
+// ⛔ 必须先 find 再 get：Drogon 的 `Attributes::get<T>()` 在**键不存在**时不会抛异常
+//    （它直接解引用 end() 迭代器），实测表现为"带会话令牌下载被误判成票据不匹配 → 403"，
+//    而"票据 + 会话令牌都有"的请求也会踩同一个坑。这类未定义行为不能用 try/catch 兜。
 bool TicketAllows(const drogon::HttpRequestPtr& req, const std::string& file_id,
                   const std::string& version_id, Error& error) {
-  std::string ticket_file;
-  std::string ticket_version;
-  try {
-    ticket_file = req->attributes()->get<std::string>("download_ticket_file_id");
-    ticket_version = req->attributes()->get<std::string>("download_ticket_version_id");
-  } catch (const std::exception&) {
-    return true;  // 不是票据访问
+  if (!req->attributes()->find("download_ticket_file_id")) {
+    return true;  // 不是票据访问（会话令牌访问，权限已在服务层校验）
   }
+  const std::string ticket_file = req->attributes()->get<std::string>("download_ticket_file_id");
+  const std::string ticket_version =
+      req->attributes()->find("download_ticket_version_id")
+          ? req->attributes()->get<std::string>("download_ticket_version_id")
+          : std::string{};
 
   if (ticket_file != file_id) {
     error = Error{"FORBIDDEN", "下载票据与文件不匹配"};
