@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <!--
+      手机端防横向溢出（2026-10-03 用户实测）：宽表格/长内容会把整页撑得比屏幕宽，
+      横滑时固定在底部的导航栏会被推出可视区（用户报"点分享给我的，导航栏直接消失"）。
+      这里兜一层；真正的修法是这些页面在手机上改用卡片列表（components/MobileItemCard.tsx）。
+    -->
+    <style>
+      html,
+      body {
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+      .ant-table-wrapper {
+        max-width: 100%;
+      }
+    </style>
     <title>lan-file-hub</title>
   </head>
   <body>

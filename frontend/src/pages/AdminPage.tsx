@@ -186,6 +186,8 @@ function UsersTab() {
         loading={usersQuery.isLoading}
         columns={columns}
         dataSource={usersQuery.data?.items ?? []}
+        // 手机上也让表格**自己内部**横滑，不要把整页撑宽（否则底部导航会被推出屏幕）
+        scroll={{ x: 720 }}
         pagination={{
           current: page,
           pageSize: 20,
@@ -325,6 +327,8 @@ function AuditTab() {
         loading={logsQuery.isLoading}
         columns={columns}
         dataSource={logsQuery.data?.items ?? []}
+        // 同上：表格内部横滑，别把整页撑宽
+        scroll={{ x: 720 }}
         pagination={{
           current: page,
           pageSize: 20,

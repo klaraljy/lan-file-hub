@@ -66,6 +66,41 @@ test('手机端：底部 Tab / 我的页 / 悬浮上传 / 发送给…底部面�
   await filesTab.click();
   await expect(page).toHaveURL(/\/files/);
 
+  // 2.1) 用户 2026-10-03 实测："点分享给我的，导航栏直接消失"。
+  //      真因是这些页面用了电脑版宽表格 → 页面被撑得比屏幕宽 → 横滑时固定底栏被推出可视区。
+  //      手机上改成卡片列表后，这里把"底栏始终在可视区内 + 页面不横向溢出"钉死。
+  await sharedTab.click();
+  await expect(page).toHaveURL(/\/shared/);
+  await expect(sharedTab).toBeVisible();
+  {
+    const navBox = await page.locator('nav[aria-label="主导航"]').boundingBox();
+    const viewport = page.viewportSize();
+    expect(navBox, '底栏必须还在').not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(navBox!.y, '底栏跑到屏幕上方了').toBeGreaterThanOrEqual(0);
+    expect(
+      navBox!.y + navBox!.height,
+      '底栏被挤出可视区（就是用户报的"导航栏消失"）',
+    ).toBeLessThanOrEqual(viewport!.height + 1);
+  }
+  expect(await horizontalOverflow(page), '「分享给我的」不该横向溢出').toBeLessThanOrEqual(1);
+  await page.screenshot({ path: join(SHOT_DIR, 'mobile-shared.png'), fullPage: false });
+
+  // 「回收站」同样要满足（它原来是宽表格，手机上已换卡片）
+  await meTab.click();
+  await page.getByText('回收站').click();
+  await expect(page).toHaveURL(/\/trash/);
+  {
+    const navBox = await page.locator('nav[aria-label="主导航"]').boundingBox();
+    const viewport = page.viewportSize();
+    expect(navBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(navBox!.y + navBox!.height).toBeLessThanOrEqual(viewport!.height + 1);
+  }
+  expect(await horizontalOverflow(page), '「回收站」不该横向溢出').toBeLessThanOrEqual(1);
+  await filesTab.click();
+  await expect(page).toHaveURL(/\/files/);
+
   // 3) 「我的」页：最近文件 / 回收站 / 设置 / 退出登录 都在这里
   await meTab.click();
   await expect(page).toHaveURL(/\/me/);

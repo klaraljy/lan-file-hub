@@ -35,6 +35,8 @@ import {
   useTrash,
 } from '../features/trash/useTrash';
 import type { TrashItem, TrashItemType } from '../types/trash';
+import { MobileCardList, MobileItemCard } from '../components/MobileItemCard';
+import { useIsMobile, TOUCH_HEIGHT } from '../hooks/useIsMobile';
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '—';
@@ -46,6 +48,7 @@ function formatBytes(bytes: number): string {
 
 export function TrashPage() {
   const { message } = AntApp.useApp();
+  const isMobile = useIsMobile();
   const [typeFilter, setTypeFilter] = useState<TrashItemType | undefined>(undefined);
   const [page, setPage] = useState(1);
 
@@ -210,21 +213,76 @@ export function TrashPage() {
         <Empty description={pageStateMessage(state, trashQuery.error)} />
       )}
 
-      {showsContent(state) && (
-        <Table<TrashItem>
-          rowKey="id"
-          columns={columns}
-          dataSource={trashQuery.data?.items ?? []}
-          pagination={{
-            current: page,
+      {showsContent(state) &&
+        (isMobile ? (
+          // 手机：一条一张卡（宽表格在手机上表头会竖排、并撑出横向滚动，实测踩到）
+          <MobileCardList>
+            {(trashQuery.data?.items ?? []).length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="回收站是空的" />
+            ) : (
+              (trashQuery.data?.items ?? []).map((item) => (
+                <MobileItemCard
+                  key={item.id}
+                  icon={
+                    item.type === 'folder' ? (
+                      <FolderOutlined style={{ color: '#faad14' }} />
+                    ) : (
+                      <FileOutlined style={{ color: '#8c8c8c' }} />
+                    )
+                  }
+                  title={item.name}
+                  subtitle={`${item.type === 'folder' ? '文件夹' : formatBytes(item.size_bytes)} · 原位置：${
+                    item.original_folder_name || '我的文件'
+                  } · ${new Date(item.deleted_at).toLocaleDateString()}`}
+                  actions={
+                    <>
+                      <Popconfirm
+                        title={`恢复「${item.name}」？`}
+                        okText="恢复"
+                        cancelText="取消"
+                        onConfirm={() => void handleRestore(item)}
+                      >
+                        <Button
+                          type="primary"
+                          icon={<UndoOutlined />}
+                          style={{ height: TOUCH_HEIGHT, flex: 1 }}
+                        >
+                          恢复
+                        </Button>
+                      </Popconfirm>
+                      <Popconfirm
+                        title={`永久删除「${item.name}」？`}
+                        description="删除后无法找回。"
+                        okText="永久删除"
+                        okButtonProps={{ danger: true }}
+                        cancelText="取消"
+                        onConfirm={() => void handlePurge(item)}
+                      >
+                        <Button danger icon={<DeleteOutlined />} style={{ height: TOUCH_HEIGHT }}>
+                          永久删除
+                        </Button>
+                      </Popconfirm>
+                    </>
+                  }
+                />
+              ))
+            )}
+          </MobileCardList>
+        ) : (
+          <Table<TrashItem>
+            rowKey="id"
+            columns={columns}
+            dataSource={trashQuery.data?.items ?? []}
+            pagination={{
+              current: page,
             pageSize: trashQuery.data?.page_size ?? 20,
             total: trashQuery.data?.total ?? 0,
             onChange: setPage,
             showSizeChanger: false,
           }}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="回收站是空的" /> }}
-        />
-      )}
+          />
+        ))}
     </Card>
   );
 }

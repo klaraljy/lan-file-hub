@@ -27,6 +27,8 @@ import { DownloadOutlined, FileOutlined, FolderOpenOutlined } from '@ant-design/
 import { useNavigate } from 'react-router-dom';
 
 import { formatBytes } from '../features/files/listView';
+import { MobileCardList, MobileItemCard } from '../components/MobileItemCard';
+import { useIsMobile, TOUCH_HEIGHT } from '../hooks/useIsMobile';
 import {
   derivePageState,
   pageStateMessage,
@@ -47,6 +49,7 @@ const LEVEL_COLORS: Record<string, string> = {
 export function SharedWithMePage() {
   const { message } = AntApp.useApp();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [typeFilter, setTypeFilter] = useState<SharedWithMeFilter>('all');
   const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -182,22 +185,81 @@ export function SharedWithMePage() {
         <Empty description={pageStateMessage(state, query.error)} />
       )}
 
-      {showsContent(state) && (
-        <Table<SharedWithMeItem>
-          rowKey="resource_id"
-          columns={columns}
-          dataSource={items}
-          pagination={false}
-          locale={{
-            emptyText: (
+      {showsContent(state) &&
+        (isMobile ? (
+          // 手机：一条一张卡（宽表格会把表头挤成竖排、并把页面撑出横向滚动，实测踩到）
+          <MobileCardList>
+            {items.length === 0 ? (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description="还没有人分享文件或文件夹给你"
               />
-            ),
-          }}
-        />
-      )}
+            ) : (
+              items.map((item) => (
+                <MobileItemCard
+                  key={item.resource_id}
+                  icon={
+                    item.resource_type === 'folder' ? (
+                      <FolderOpenOutlined style={{ color: '#faad14' }} />
+                    ) : (
+                      <FileOutlined style={{ color: '#8c8c8c' }} />
+                    )
+                  }
+                  title={item.name}
+                  subtitle={`${
+                    item.resource_type === 'folder' ? '文件夹' : formatBytes(item.size_bytes)
+                  } · ${PERMISSION_LABELS[item.permission] ?? '共享访问'} · ${new Date(
+                    item.granted_at,
+                  ).toLocaleDateString()}`}
+                  extra={
+                    <Tag color={LEVEL_COLORS[item.permission] ?? 'default'} style={{ marginInlineEnd: 0 }}>
+                      {item.permission}
+                    </Tag>
+                  }
+                  actions={
+                    item.resource_type === 'folder' ? (
+                      <Button
+                        type="primary"
+                        block
+                        icon={<FolderOpenOutlined />}
+                        style={{ height: TOUCH_HEIGHT }}
+                        onClick={() => navigate(`/files/${item.resource_id}`)}
+                      >
+                        打开文件夹
+                      </Button>
+                    ) : (
+                      <Button
+                        type="primary"
+                        block
+                        icon={<DownloadOutlined />}
+                        style={{ height: TOUCH_HEIGHT }}
+                        loading={downloading === item.resource_id}
+                        onClick={() => void handleDownload(item)}
+                      >
+                        下载
+                      </Button>
+                    )
+                  }
+                />
+              ))
+            )}
+          </MobileCardList>
+        ) : (
+          <Table<SharedWithMeItem>
+            rowKey="resource_id"
+            columns={columns}
+            dataSource={items}
+            pagination={false}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="还没有人分享文件或文件夹给你"
+                />
+              ),
+            }}
+          />
+        ))}
     </Card>
   );
 }
