@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 局域网快传：手机上跑一个小 HTTP 服务，朋友用浏览器扫码下载（五阶段改造 ③）。 -->
+<!--
+  局域网文件柜 App。
+  · 「连接电脑」页（首页）：记住电脑地址、显示在不在线、App 内打开电脑网页（2026-10-02 用户要求）
+  · 「快传」页：手机上跑一个小 HTTP 服务，两台手机互传（五阶段改造 ③）
+
+  ⚠️ android:usesCleartextTraffic="true" 是必需的：局域网里全是明文 HTTP（没有证书），
+     Android 9+ 默认禁止明文，不加这一行 App 连不上电脑（也打不开网页）。
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
   <uses-permission android:name="android.permission.INTERNET" />
@@ -14,10 +21,12 @@
       android:icon="@drawable/ic_share_notification"
       android:label="@string/app_name"
       android:supportsRtl="true"
+      android:usesCleartextTraffic="true"
       android:theme="@android:style/Theme.DeviceDefault.Light">
 
+    <!-- 首页：连接电脑 -->
     <activity
-        android:name=".MainActivity"
+        android:name=".ConnectActivity"
         android:exported="true"
         android:label="@string/app_name">
       <intent-filter>
@@ -25,6 +34,18 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+
+    <!-- App 内浏览器：打开电脑的网页 -->
+    <activity
+        android:name=".WebViewActivity"
+        android:exported="false"
+        android:label="@string/app_name" />
+
+    <!-- 快传（两台手机互传），从首页按钮进入 -->
+    <activity
+        android:name=".MainActivity"
+        android:exported="false"
+        android:label="@string/app_name" />
 
     <!-- 前台服务：只负责让进程活着（分享中不被系统回收），HTTP 服务在进程内的单例里跑 -->
     <service

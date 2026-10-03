@@ -1,4 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="app_name">局域网快传</string>
+  <string name="app_name">局域网文件柜</string>
+
+  <!-- 「连接电脑」页（2026-10-02 新增：App 里记住电脑地址、看在线状态、点开就用） -->
+  <string name="connect_title">连接电脑</string>
+  <string name="connect_subtitle">点下面的电脑就能打开它的文件页面（网址会记在这里，下次不用再输）。</string>
+  <string name="connect_empty">还没有连过电脑。\n先在电脑上双击启动，然后点下面「添加电脑」，把电脑上显示的地址输进来（例如 192.168.1.5）。</string>
+  <string name="connect_footer">手机要和电脑连同一个 WiFi（或电脑连你的手机热点）。长按一条可以删除。</string>
+  <string name="connect_add_button">添加电脑</string>
+  <string name="connect_share_button">快传（两台手机互传）</string>
+  <string name="connect_online">在线 · 点一下就能用</string>
+  <string name="connect_offline">离线 · 电脑没开或不在同一个网络</string>
+  <string name="connect_checking">正在检查…</string>
+  <string name="connect_add_title">添加电脑</string>
+  <string name="connect_add_message">输入电脑上显示的那个地址（可以只输 IP，端口默认 9180）：</string>
+  <string name="connect_add_hint">192.168.1.5</string>
+  <string name="connect_add_confirm">添加</string>
+  <string name="connect_add_invalid">地址看起来不对，例如应该是 192.168.1.5 或 192.168.1.5:9180</string>
+  <string name="connect_cancel">取消</string>
+  <string name="connect_remove_title">删除这台电脑？</string>
+  <string name="connect_remove_message">将从列表里删掉「%1$s」。电脑上的文件不会受影响。</string>
+  <string name="connect_remove_confirm">删除</string>
+
+  <!-- App 内浏览器 -->
+  <string name="web_reload">刷新</string>
+  <string name="web_external">浏览器</string>
+  <string name="web_close">关闭</string>
 </resources>

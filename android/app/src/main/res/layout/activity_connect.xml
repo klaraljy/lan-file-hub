@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「连接电脑」页：历史地址列表 + 在线状态 + 添加/快传两个按钮 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+  <TextView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:text="@string/connect_title"
+      android:textSize="22sp"
+      android:textStyle="bold" />
+
+  <TextView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="6dp"
+      android:text="@string/connect_subtitle"
+      android:textSize="13sp" />
+
+  <TextView
+      android:id="@+id/empty_hint"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:gravity="center"
+      android:text="@string/connect_empty"
+      android:textSize="15sp"
+      android:visibility="gone" />
+
+  <ListView
+      android:id="@+id/server_list"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_marginTop="12dp"
+      android:layout_weight="1"
+      android:divider="#22000000"
+      android:dividerHeight="1dp" />
+
+  <TextView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:text="@string/connect_footer"
+      android:textSize="12sp" />
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp"
+      android:orientation="horizontal">
+
+    <Button
+        android:id="@+id/add_server"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="@string/connect_add_button" />
+
+    <Button
+        android:id="@+id/open_share"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:text="@string/connect_share_button" />
+  </LinearLayout>
+</LinearLayout>
