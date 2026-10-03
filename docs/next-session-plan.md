@@ -51,18 +51,25 @@
 
 **当前的临时办法（已告知用户）**：先把文件名改一下（例如加个日期）再上传，或先在列表里删掉旧文件再传。
 
-### 9.1 顺带发现的第二个缺陷：网页目录里的 `.apk` 打不开（2026-10-03）
+### 9.1 ✅ 已修：网页目录里的 `.apk` 打不开（2026-10-03 修完并验证）
 
 把新的 APK 放进 `portable\app\web\lan-file-hub.apk`（338.8 KB）后，
-`GET /lan-file-hub.apk` 返回的是 **`text/html`（SPA 回退页），不是 APK** ——
-说明后端的静态托管**只认白名单里的扩展名**，`.apk` 不在其中，于是走了前端路由回退。
-后果：用户**没法从自己的服务器把 APK 下到手机**（这恰恰是他要干的事）。
+`GET /lan-file-hub.apk` 曾返回 **`text/html`（SPA 回退页）而不是 APK** -—
+根因：**Drogon 的静态托管只处理它认识的 MIME 类型**，`.apk` 不在其中，请求落到 default handler，
+那里一律回退 index.html。后果：用户**没法从自己的服务器把 APK 下到手机**。
 
-**要做的**：`backend/src/api/web_hosting.cpp` 里给静态响应补一个兜底 ——
-白名单之外的扩展名用 `application/octet-stream` 返回（并保留 `X-Content-Type-Options: nosniff`），
-而不是回退到 index.html；只有**看起来像前端路由**的路径（无扩展名 / `.html`）才回退。
-验收：`GET /lan-file-hub.apk` → 200 + `application/octet-stream` + 正确大小；
-`GET /files`（前端路由）→ 仍是 index.html。
+**修法（`backend/src/api/web_hosting.cpp`）**：default handler 里先判断"路径像不像带扩展名的文件"，
+像就**安全地**映射到 WEB_ROOT 下的真实文件按 `application/octet-stream` 发；否则才回退前端路由。
+安全上做了两道：路径规范化后必须落在 WEB_ROOT 之内（防 `../`），响应头仍带 `nosniff`。
+
+**实测（2026-10-03，便携实例）**：
+
+```text
+GET /lan-file-hub.apk              → 200  application/octet-stream  338.8 KB   ✅
+GET /files（前端路由）              → 200  含 <div id="root">（仍回退 index.html） ✅
+GET /../backend/CMakeLists.txt     → 200  0.9 KB 网页，未泄露源码 ✅
+GET /logo.png                      → 200  image/png（正常静态资源未受影响） ✅
+```
 
 > 用户 2026-10-02 收工前提出的四件事，逐条对应下面四节。**执行顺序：① 启动器 → ② 网页图标 → ③ 手机 App → ④ 收尾。**
 > 每件事做完都要给**可验证的证据**（命令输出 / 截图 / 真机结果），跑通再提交；一次提交只放一个逻辑变化。
