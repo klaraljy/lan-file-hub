@@ -414,6 +414,7 @@ QUOTA_EXCEEDED
 | 上传 `components/UploadPanel.tsx` | **首屏不再有上传区**：没任务时是右下角**悬浮「上传」按钮**；有任务时是**悬浮进度条**（文件名 + 进度 + 取消 + 添加 + 全部）；全部结束后收成一条「上传完成 N 个 / 继续上传 / 查看 / ×」；点「全部」用底部面板列任务（暂停/继续/取消/移除） |
 | **上传文件夹** `components/UploadPanel.tsx` + `features/uploads/folderUpload.ts`（2026-10-03） | 桌面端多一个「**选择文件夹上传**」按钮（`webkitdirectory`），并且**把文件夹拖进上传区**也会走同一条路（`DataTransferItem.webkitGetAsEntry()` 递归读）。上传前弹确认框「将上传 N 个文件、新建 M 个文件夹、共约 X MB」，确认后**按浅→深建目录**（同名目录复用，靠 409 判定），再把文件分批传到各自目录。纯逻辑（路径净化、目录链、上限 2000 个文件 / 32 层）在 `folderUpload.ts`，单测 12 条 |
 | 文件详情 `components/FileDetailDrawer.tsx`（2026-10-03） | 新增「**所在文件夹**」一行 + 「**跳过去**」按钮：详情里直接看到文件在哪个目录，点一下关掉抽屉并跳过去（用户要求"电脑端要有跳转的功能或者目录的位置"） |
+| 手机应用卡片 `components/PhoneAppDownload.tsx`（2026-10-03） | 「我的」页 `compact` 一行 / 「设置」页 `full` 一块，共用同一个组件；版本、构建号、大小、构建时间**都来自后端现读的 APK 文件**（`services/appReleaseApi.ts`），重新构建后刷新即变。**在 App 里打开时（UA 带 `LanFileHubApp/<versionCode>`，见 android 的 `WebViewActivity`）按钮语义变成「更新到构建号 N」/「已是最新」**，并隐藏二维码（同一台手机扫码没意义）；判断逻辑在 `features/app/appUpdate.ts`（纯函数 + 单测）。来历：用户要求"app 里面的 apk 下载直接改成更新" |
 | 设置页 `pages/SettingsPage.tsx`（2026-10-03） | 新增三块：「**手机怎么连**」（`components/PhoneAccessCard.tsx`：当前局域网地址 + 二维码 + 复制，换网络自动更新；附「扫码打不开/App 找不到电脑」的两条对号入座说明）、「**配套手机应用**」（与「我的」页共用 `PhoneAppDownload`，含下载/扫码）与「**文件存在哪**」（仅管理员：显示 `storage_root`、说明对象按 SHA-256 命名、提醒别手工删目录）。另外修正了原来写错的 Token 存储说明（现在默认 sessionStorage，勾了「记住我」才 localStorage） |
 | 对外地址一律走 `services/publicUrl.ts`（2026-10-03 补齐） | `buildShareUrl` / `buildInviteUrl` / `buildAppDownloadUrl` / **`buildSiteUrl`（整站地址，「手机怎么连」与广场二维码用）** 共用 `resolvePublicBase`：本机地址打开时自动换成服务端上报的局域网地址。⛔ **不要再用 `window.location.origin` 拼给手机用的链接** —— 电脑上用 127.0.0.1 打开时那是"手机自己"，扫码必然打不开（广场二维码原来就踩了这个坑）。地址变化用 `subscribeServerLanAddress` 通知，`hooks/useServerLanAddress.ts` 接进 React |
 | 弹层 `components/ResponsiveSheet.tsx` | 手机上一律**从底部滑出**（AntD `Drawer placement="bottom"`，高度 90%）；桌面端仍是居中 Modal。发送给… / 分享 / 权限 / 版本历史 / 新建与重命名文件夹 都走它 —— 只写一份内容，避免"手机版漏改一个" |
@@ -453,8 +454,14 @@ QUOTA_EXCEEDED
 ### 9.2 界面
 
 - **谁在线**：每张卡显示用户名 + 平台标签 + 设备名，右侧是**显眼主按钮「发文件给他」**
-  → 打开「选一个文件」（列「我的文件」，可按名字过滤）→ 选中即授权（只读）→
+  → 打开 `components/SendFilePicker.tsx`（2026-10-03 改）：一个**迷你资源管理器**，
+  面包屑能一层层进子目录，当前层同时列**文件夹 + 文件** ——
+  点文件夹右边的「**发这个文件夹**」整个发出去，点名字进去挑里面的文件。
+  选中即授权（只读，`PUT /resources/{id}/permissions/{userId}`，文件夹同样走这条），
   提示"他登录后在左侧「分享给我的」里就能看到并下载"（与 §14.3 口径一致）。
+  ⛔ 旧实现只列根目录的文件、选不了文件夹，用户实测抱怨过
+  （「点击发文件，怎么不能按文件夹的形式发送」）；纯逻辑在 `features/sharing/sendPicker.ts`（有单测）。
+  接收端能进文件夹是因为后端权限**沿目录继承**（`permission_checker.cpp` 的 `EffectiveLevel`），**不用改后端**。
   列表**不含自己**、**不含隐身用户**；同一个人多设备只出现一次。
 - **我的设备**：同一账号的其它在线设备；文案明确写出 **"同一个账号的文件本来就是同一份，不需要互传"**
   （AGENTS.md §14.2），并提供「在另一台设备上打开（显示二维码）」（复用 `ShareLinkBox`）。

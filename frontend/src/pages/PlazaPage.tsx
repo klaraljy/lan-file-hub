@@ -12,14 +12,13 @@
  *
  * 隐私：默认可见（用户要求），可在「设置」里隐藏；隐藏后别人看不到你，你自己仍能看到自己的设备。
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
   Empty,
-  Input,
   List,
   Space,
   Spin,
@@ -33,18 +32,14 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
 
 import { ResponsiveSheet } from '../components/ResponsiveSheet';
+import { SendFilePicker } from '../components/SendFilePicker';
 import { ShareLinkBox } from '../components/ShareLinkBox';
-import { sharingErrorMessage, sharingKeys } from '../features/sharing/useSharing';
 import { ensureDeviceId, usePresenceHeartbeat } from '../features/presence/usePresence';
-import { filesApi } from '../services/filesApi';
-import { foldersApi } from '../services/foldersApi';
 import { buildSiteUrl } from '../services/publicUrl';
-import { sharingApi } from '../services/sharingApi';
 import type { OnlineUser } from '../services/presenceApi';
-import type { FileMeta } from '../types/file';
 
 /** 平台图标：手机 / 电脑，一眼能看出对方用什么设备 */
 function PlatformIcon({ platform }: { platform: string }) {
@@ -56,116 +51,6 @@ function platformLabel(platform: string): string {
   if (platform === 'ios') return 'iPhone';
   if (platform === 'windows') return '电脑';
   return '浏览器';
-}
-
-/** 选一个文件发给对方：列出「我的文件」，选中即授权（只读） */
-function SendFileSheet({
-  target,
-  onClose,
-}: {
-  target: OnlineUser | null;
-  onClose: () => void;
-}) {
-  const { message } = AntApp.useApp();
-  const [keyword, setKeyword] = useState('');
-  const [sendingId, setSendingId] = useState<string | null>(null);
-
-  const root = useQuery({ queryKey: ['folders', 'root'], queryFn: () => foldersApi.root(), enabled: Boolean(target) });
-  const files = useQuery({
-    queryKey: ['files', 'root', 'plaza-picker'],
-    queryFn: () => filesApi.list(root.data!.id, { page_size: 100, sort_by: 'name', sort_order: 'asc' }),
-    enabled: Boolean(target) && Boolean(root.data?.id),
-  });
-  // 授权走既有的权限接口（与「发送给…」同一条链路）：文件所有者给对方 READ
-  const queryClient = useQueryClient();
-  const grant = useMutation({
-    mutationFn: ({ fileId, userId }: { fileId: string; userId: string }) =>
-      sharingApi.grant(fileId, userId, 'READ'),
-    onSuccess: async (_data, variables) => {
-      await queryClient.invalidateQueries({ queryKey: sharingKeys.permissions(variables.fileId) });
-    },
-  });
-
-  const items = useMemo(() => {
-    const list = files.data?.items ?? [];
-    const trimmed = keyword.trim().toLowerCase();
-    if (!trimmed) return list;
-    return list.filter((file) => file.name.toLowerCase().includes(trimmed));
-  }, [files.data, keyword]);
-
-  async function send(file: FileMeta) {
-    if (!target) return;
-    setSendingId(file.id);
-    try {
-      await grant.mutateAsync({ fileId: file.id, userId: target.user_id });
-      message.success(
-        `已把「${file.name}」发给 ${target.username}：他登录后在左侧「分享给我的」里就能看到并下载`,
-      );
-      setKeyword('');
-      onClose();
-    } catch (error) {
-      message.error(sharingErrorMessage(error));
-    } finally {
-      setSendingId(null);
-    }
-  }
-
-  return (
-    <ResponsiveSheet
-      open={Boolean(target)}
-      onClose={onClose}
-      desktopWidth={640}
-      title={<Space><SendOutlined /><span>发文件给 {target?.username ?? ''}</span></Space>}
-    >
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message="选一个文件发给他"
-        description="对方登录后，在左侧「分享给我的」里就能看到并下载。"
-      />
-
-      <Input
-        allowClear
-        placeholder="按文件名过滤"
-        value={keyword}
-        onChange={(event) => setKeyword(event.target.value)}
-        style={{ marginBottom: 8 }}
-      />
-
-      {files.isLoading && <Spin />}
-      {!files.isLoading && items.length === 0 && (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={keyword ? '没有匹配的文件' : '你还没有上传过文件'}
-        />
-      )}
-
-      <List
-        dataSource={items}
-        renderItem={(file) => (
-          <List.Item
-            actions={[
-              <Button
-                key="send"
-                type="primary"
-                size="large"
-                loading={sendingId === file.id}
-                onClick={() => void send(file)}
-              >
-                发给他
-              </Button>,
-            ]}
-          >
-            <List.Item.Meta
-              title={file.name}
-              description={`${(file.size_bytes / 1024 / 1024).toFixed(1)} MB`}
-            />
-          </List.Item>
-        )}
-      />
-    </ResponsiveSheet>
-  );
 }
 
 export function PlazaPage() {
@@ -303,7 +188,7 @@ export function PlazaPage() {
         </ResponsiveSheet>
       </Card>
 
-      <SendFileSheet target={target} onClose={() => setTarget(null)} />
+      <SendFilePicker target={target} onClose={() => setTarget(null)} />
     </Space>
   );
 }

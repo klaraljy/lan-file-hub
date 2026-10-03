@@ -10,13 +10,14 @@
  * 重新构建一次、刷新页面就是新数字，不需要重启后端。
  */
 import { useState } from 'react';
-import { App as AntApp, Button, Space, Typography } from 'antd';
-import { AndroidOutlined, DownloadOutlined, QrcodeOutlined } from '@ant-design/icons';
+import { App as AntApp, Button, Space, Tag, Typography } from 'antd';
+import { AndroidOutlined, DownloadOutlined, QrcodeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 
 import { ResponsiveSheet } from './ResponsiveSheet';
 import { ShareLinkBox } from './ShareLinkBox';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { appUpdateState, installedBuildFromUserAgent } from '../features/app/appUpdate';
 import { appDownloadUrl, describeAppRelease, fetchAppRelease } from '../services/appReleaseApi';
 
 interface Props {
@@ -44,6 +45,25 @@ export function PhoneAppDownload({ variant = 'compact' }: Props) {
     : release.isLoading
       ? '正在读取安装包信息…'
       : '这台服务器上还没有准备好安装包';
+
+  /**
+   * 在 App 里打开时（UA 带了构建号）按钮语义变成「更新」（用户 2026-10-03 要求）：
+   * 已经装了就不用再说"下载安装"，直接告诉他/她有没有新版。
+   */
+  const installed = installedBuildFromUserAgent(
+    typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  );
+  const updateState = appUpdateState(installed, info?.version_code);
+  const buttonLabel =
+    updateState === 'update'
+      ? `更新到构建号 ${info?.version_code}`
+      : updateState === 'latest'
+        ? '已是最新'
+        : isMobile
+          ? '下载安装'
+          : '下载安装包';
+  const buttonIcon =
+    updateState === 'update' ? <SyncOutlined /> : <DownloadOutlined />;
 
   async function copyDownloadUrl(url: string) {
     try {
@@ -87,21 +107,30 @@ export function PhoneAppDownload({ variant = 'compact' }: Props) {
           {info?.available && (
             <>
               <Button
-                type="primary"
+                type={updateState === 'latest' ? 'default' : 'primary'}
                 size="small"
-                icon={<DownloadOutlined />}
-                href={download.url}
+                icon={buttonIcon}
+                href={updateState === 'latest' ? undefined : download.url}
+                disabled={updateState === 'latest'}
               >
-                下载
+                {updateState === 'install' ? '下载' : buttonLabel}
               </Button>
-              <Button
-                type="link"
-                size="small"
-                icon={<QrcodeOutlined />}
-                onClick={() => setShowQr(true)}
-              >
-                二维码
-              </Button>
+              {updateState === 'latest' ? (
+                <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                  已是最新
+                </Tag>
+              ) : (
+                updateState === 'install' && (
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<QrcodeOutlined />}
+                    onClick={() => setShowQr(true)}
+                  >
+                    二维码
+                  </Button>
+                )
+              )}
             </>
           )}
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -135,19 +164,31 @@ export function PhoneAppDownload({ variant = 'compact' }: Props) {
         {info?.available ? (
           <>
             <Space wrap>
-              <Button type="primary" icon={<DownloadOutlined />} href={download.url}>
-                {isMobile ? '下载安装' : '下载安装包'}
+              <Button
+                type={updateState === 'latest' ? 'default' : 'primary'}
+                icon={buttonIcon}
+                href={updateState === 'latest' ? undefined : download.url}
+                disabled={updateState === 'latest'}
+              >
+                {buttonLabel}
               </Button>
-              {!isMobile && (
+              {/* 在 App 里（同一台手机上）显示二维码没意义，不显示 */}
+              {!isMobile && installed === null && (
                 <Button icon={<QrcodeOutlined />} onClick={() => setShowQr(true)}>
                   用手机扫码安装
                 </Button>
               )}
             </Space>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {isMobile
-                ? '点「下载安装」就下到这台手机；安装时允许「安装未知应用」即可。'
-                : '在电脑上点「下载安装包」会把 APK 下到电脑；要装到手机上，点「用手机扫码安装」扫一下最快。'}
+              {updateState === 'update'
+                ? `这台手机装的是构建号 ${installed}，服务器上已经是构建号 ${info.version_code} —— 点「更新」下载新版，装的时候直接覆盖，账号和设置都保留。`
+                : updateState === 'latest'
+                  ? `这台手机已经是服务器上的最新版（构建号 ${info.version_code}），不用更新。`
+                  : installed !== null
+                    ? '点「下载安装」就下到这台手机；安装时允许「安装未知应用」即可。'
+                    : isMobile
+                      ? '点「下载安装」就下到这台手机；安装时允许「安装未知应用」即可。'
+                      : '在电脑上点「下载安装包」会把 APK 下到电脑；要装到手机上，点「用手机扫码安装」扫一下最快。'}
             </Typography.Text>
           </>
         ) : (
