@@ -266,10 +266,15 @@ public class ConnectActivity extends Activity {
                   searchView.setText(getString(R.string.connect_found, found.size()));
                 } else {
                   // 把"扫了什么"也说清楚：用户能据此判断是不是网络问题（AGENTS §14.1）
+                  // 2026-10-03 用户实测补丁：校园网是 /16 大网段，手机只扫自己那一段 ——
+                  // 这种情况**不是**网络禁止互访，必须让用户去「添加地址」，不能冤枉网络。
+                  final boolean wide = NetUtil.isWideSubnet(NetUtil.prefixLength());
                   searchView.setText(
                       (kind == NetworkState.Kind.HOTSPOT
                               ? getString(R.string.connect_not_found_hotspot)
-                              : getString(R.string.connect_not_found_wifi))
+                              : wide
+                                  ? getString(R.string.connect_not_found_wide_subnet)
+                                  : getString(R.string.connect_not_found_wifi))
                           + "\n"
                           + getString(R.string.connect_search_scope, ownIp, scanRange, portsText));
                 }

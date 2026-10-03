@@ -25,6 +25,9 @@
   <string name="connect_found">发现 %1$d 台电脑 —— 点一下就能用。</string>
   <string name="connect_not_found_wifi">没找到电脑。请确认：① 电脑上的程序已经启动；② 手机和电脑连的是同一个 WiFi。\n如果都正常还是找不到，多半是这个 WiFi 开了「客户端隔离」（校园网、公司网常见）—— 这时候请让电脑连你的手机热点，再点「找电脑」。</string>
   <string name="connect_not_found_hotspot">没找到电脑。请确认电脑上的程序已经启动，并且电脑连的是你这台手机的热点。</string>
+  <!-- 2026-10-03 用户实测（校园网）：能连上，但自动发现只扫本机那一段，大网段下扫不到电脑。
+       ⛔ 这种情况不能说"客户端隔离"——那会把用户骗去开热点。 -->
+  <string name="connect_not_found_wide_subnet">没找到电脑。这个网络的网段很大（校园网常见），手机只扫了自己那一段的 254 个地址，可能跟电脑不在同一段 —— 这不代表连不上。请在电脑网页「设置 → 手机怎么连」里看那个地址，回到这里点「添加地址」填进去（形如 10.200.18.61:9180）。\n如果填了也连不上，那才是这个 WiFi 禁止设备互访（客户端隔离），那就让电脑连你的手机热点。</string>
   <string name="connect_search_no_lan">手机现在没有连上任何局域网：请连上电脑所在的 WiFi，或打开手机热点并让电脑连上来（用流量是连不到电脑的）。</string>
   <string name="connect_search_no_ip">手机还没拿到局域网地址（如果刚开热点，等几秒再点一次「找电脑」）。</string>
   <string name="connect_discovered_label">自动发现</string>
