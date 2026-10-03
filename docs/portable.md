@@ -56,6 +56,11 @@ cd frontend; npm run build; cd ..          # 前端 dist（1.4 MB 左右）
 
 ## 4. 托盘程序（`scripts\tray.ps1`）
 
+**解释器**（用户 2026-10-02 要求"更新了就不要用旧的"）：入口脚本 `启动.cmd` / `停止.cmd` **优先用
+`pwsh`（PowerShell 7，本机 7.6.6）**，`where pwsh` 找不到时才退回 `powershell`（5.1）；
+面板上会打印**实际**用的版本（`解释器：PowerShell 7.6.6 (Core)` / `5.1…(Desktop)`），
+出问题一眼能分清是哪个宿主。实测两个宿主都能跑（含托盘图标 WinForms，pwsh 默认就是 STA）。
+
 一个脚本、两种形态（自动识别）：脚本在 `portable\tools\` 下 = 便携包形态（自己拉起 PG/Redis/后端）；
 在 `scripts\` 下 = 开发形态（转调 `start.ps1` / `stop.ps1`）。
 
