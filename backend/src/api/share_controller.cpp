@@ -22,6 +22,26 @@
 namespace lan_file_hub {
 namespace {
 
+// 公开分享的响应体（Describe 与 Unlock 共用，避免两处漂移）。
+// ⛔ 绝不含 owner_id / storage_key / token_hash 这类内部标识。
+nlohmann::json PublicShareToJson(const PublicShareView& share) {
+  return nlohmann::json{
+      {"name", share.name},
+      {"resource_type", share.resource_type},
+      {"size_bytes", share.size_bytes},
+      {"mime_type", share.mime_type},
+      {"permission", share.permission},
+      {"requires_password", share.requires_password},
+      {"expires_at",
+       share.expires_at.has_value() ? nlohmann::json(*share.expires_at) : nlohmann::json(nullptr)},
+      {"download_count", share.download_count},
+      {"max_downloads", share.max_downloads.has_value() ? nlohmann::json(*share.max_downloads)
+                                                        : nlohmann::json(nullptr)},
+      {"can_download", share.can_download},
+      {"download_blocked_reason", share.download_blocked_reason},
+  };
+}
+
 // 列表里**不回传 token_hash**：它虽然是哈希，但没有必要离开服务端
 nlohmann::json ShareToJson(const ShareLink& link) {
   nlohmann::json json{
@@ -31,6 +51,8 @@ nlohmann::json ShareToJson(const ShareLink& link) {
       {"resource_name", link.resource_name},
       {"permission", link.permission},
       {"download_count", link.download_count},
+      // 只有"这条有没有设密码"这一个布尔值离开服务端；哈希本身永不出门（2026-10-03）
+      {"requires_password", !link.password_hash.empty()},
       {"created_by", link.created_by},
       {"created_at", link.created_at},
       {"revoked", link.revoked_at.has_value()},
@@ -90,6 +112,13 @@ void ShareController::Create(const drogon::HttpRequestPtr& req,
     }
     if (body.contains("max_downloads") && body["max_downloads"].is_number_integer()) {
       request.max_downloads = body["max_downloads"].get<std::int32_t>();
+    }
+    // 分享密码（2026-10-03）：只在这里读一次明文，服务层立刻哈希，之后再也拿不到
+    if (body.contains("password") && body["password"].is_string()) {
+      const std::string password = body["password"].get<std::string>();
+      if (!password.empty()) {
+        request.password = password;
+      }
     }
   }
 
@@ -165,21 +194,58 @@ void ShareController::PublicDescribe(const drogon::HttpRequestPtr& /*req*/,
     return;
   }
 
-  const PublicShareView& share = view.Value();
-  nlohmann::json payload{
-      {"name", share.name},
-      {"resource_type", share.resource_type},
-      {"size_bytes", share.size_bytes},
-      {"mime_type", share.mime_type},
-      {"permission", share.permission},
-      {"expires_at",
-       share.expires_at.has_value() ? nlohmann::json(*share.expires_at) : nlohmann::json(nullptr)},
-      {"download_count", share.download_count},
-      {"max_downloads", share.max_downloads.has_value() ? nlohmann::json(*share.max_downloads)
-                                                        : nlohmann::json(nullptr)},
-      {"can_download", share.can_download},
-      {"download_blocked_reason", share.download_blocked_reason},
-  };
+  callback(MakeSuccessResponse(PublicShareToJson(view.Value()), CurrentRequestId()));
+}
+
+void ShareController::PublicUnlock(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                                   std::string token) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+
+  // 速率限制（防止拿解锁接口暴力猜密码）：按 IP + Token 计数，两个维度都要有。
+  // 与登录限流同一个思路：谁能拿到 token 谁就能猜，所以要按 token 单独限。
+  const std::string client_ip = ClientIpFrom(
+      req->getHeader("X-Forwarded-For"), req->getHeader("X-Real-IP"), req->getPeerAddr().toIp());
+  if (context->share_unlock_limiter) {
+    const auto decision = context->share_unlock_limiter->Acquire(client_ip + "|" + token);
+    if (!decision.allowed) {
+      RespondError(callback, Error{"RATE_LIMITED", "尝试次数太多，请稍后再试"});
+      return;
+    }
+  }
+
+  std::string password;
+  if (!req->getBody().empty()) {
+    auto body = ParseJsonBody(req);
+    if (!body) {
+      RespondError(callback, body.GetError());
+      return;
+    }
+    if (body.Value().contains("password") && body.Value()["password"].is_string()) {
+      password = body.Value()["password"].get<std::string>();
+    }
+  }
+
+  auto unlocked = context->sharing_service->UnlockPublic(token, password);
+  if (!unlocked) {
+    RespondError(callback, unlocked.GetError());
+    return;
+  }
+
+  nlohmann::json payload = PublicShareToJson(unlocked.Value().share);
+  if (!unlocked.Value().download_ticket.empty()) {
+    // 票据拼进下载地址：浏览器原生下载时带不了 Authorization 头（AGENTS §15.2）
+    payload["ticket"] = unlocked.Value().download_ticket;
+    payload["ticket_expires_in"] = unlocked.Value().ticket_expires_in_seconds;
+    payload["download_url"] =
+        "/api/v1/public/shares/" + token + "/download?ticket=" + unlocked.Value().download_ticket;
+  } else {
+    payload["download_url"] = "/api/v1/public/shares/" + token + "/download";
+  }
   callback(MakeSuccessResponse(payload, CurrentRequestId()));
 }
 
@@ -192,7 +258,9 @@ void ShareController::PublicDownload(const drogon::HttpRequestPtr& req,
     return;
   }
 
-  auto download = context->sharing_service->PreparePublicDownload(token);
+  // 需要密码的分享必须带解锁时拿到的票据（⛔ 否则直接访问这个 URL 就绕过了密码）
+  const std::string ticket = req->getParameter("ticket");
+  auto download = context->sharing_service->PreparePublicDownload(token, ticket);
   if (!download) {
     Metrics().IncrementCounter(
         "lan_file_hub_downloads_total", "下载结果计数",

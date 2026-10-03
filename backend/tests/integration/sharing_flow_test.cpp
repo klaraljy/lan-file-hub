@@ -29,6 +29,8 @@
 #include "lan_file_hub/infrastructure/database.h"
 #include "lan_file_hub/infrastructure/file_repository.h"
 #include "lan_file_hub/infrastructure/folder_repository.h"
+#include "lan_file_hub/infrastructure/jwt_service.h"
+#include "lan_file_hub/infrastructure/password_hasher.h"
 #include "lan_file_hub/infrastructure/permission_repository.h"
 #include "lan_file_hub/infrastructure/trash_repository.h"
 #include "lan_file_hub/infrastructure/upload_session_repository.h"
@@ -116,8 +118,16 @@ class SharingTest : public ::testing::Test {
     trash_ =
         std::make_shared<TrashService>(*trash_repo_, *files_, *folders_, *audit_, *cleanup_repo_,
                                        *permission_repo_, *share_repo_, *checker_);
-    sharing_ = std::make_shared<SharingService>(*permission_repo_, *share_repo_, *files_, *folders_,
-                                                *users_, *audit_, *storage_, *checker_);
+    // 分享密码（2026-10-03）需要哈希器与票据签发器；测试里用快参数，别让 Argon2 变成瓶颈
+    Argon2Options argon;
+    argon.memory_cost_kib = 1024;
+    argon.time_cost = 1;
+    hasher_ = std::make_shared<PasswordHasher>(argon);
+    jwt_ = std::make_shared<JwtService>(
+        JwtOptions{"integration-test-secret-0123456789abcdefghij", 3600, "lan-file-hub"});
+    sharing_ =
+        std::make_shared<SharingService>(*permission_repo_, *share_repo_, *files_, *folders_,
+                                         *users_, *audit_, *storage_, *checker_, *hasher_, *jwt_);
 
     owner_ = MakeUser("shareowner");
     reader_ = MakeUser("sharereader");
@@ -239,6 +249,8 @@ class SharingTest : public ::testing::Test {
   std::shared_ptr<CleanupTaskRepository> cleanup_repo_;
   std::shared_ptr<LocalObjectStorage> storage_;
   std::shared_ptr<GrantBasedPermissionChecker> checker_;
+  std::shared_ptr<PasswordHasher> hasher_;
+  std::shared_ptr<JwtService> jwt_;
   std::shared_ptr<FolderService> folders_service_;
   std::shared_ptr<FileService> files_service_;
   std::shared_ptr<UploadService> uploads_;
@@ -501,7 +513,7 @@ TEST_F(SharingTest, PublicDescribeAndDownloadWorkWithoutLogin) {
   EXPECT_EQ(view.Value().size_bytes, payload.size());
   EXPECT_TRUE(view.Value().can_download);
 
-  auto download = sharing_->PreparePublicDownload(token);
+  auto download = sharing_->PreparePublicDownload(token, "");
   ASSERT_TRUE(download.Ok()) << download.GetError().message;
   EXPECT_EQ(download.Value().file.content_hash, Sha256Hex(payload));
   // 公开视图本身不含任何内部标识（对象 Key 只在服务端使用）
@@ -526,7 +538,7 @@ TEST_F(SharingTest, RevokedShareIsRejected) {
   EXPECT_TRUE(sharing_->RevokeShare(Owner(), created.Value().link.id).Ok()) << "重复撤销幂等";
 
   EXPECT_FALSE(sharing_->DescribePublic(token).Ok()) << "撤销后不能再查看";
-  EXPECT_FALSE(sharing_->PreparePublicDownload(token).Ok()) << "撤销后不能再下载";
+  EXPECT_FALSE(sharing_->PreparePublicDownload(token, "").Ok()) << "撤销后不能再下载";
 }
 
 TEST_F(SharingTest, ExpiredShareIsRejected) {
@@ -556,7 +568,7 @@ TEST_F(SharingTest, ExpiredShareIsRejected) {
   }
 
   EXPECT_FALSE(sharing_->DescribePublic(token).Ok()) << "过期后不能再查看";
-  EXPECT_FALSE(sharing_->PreparePublicDownload(token).Ok()) << "过期后不能再下载";
+  EXPECT_FALSE(sharing_->PreparePublicDownload(token, "").Ok()) << "过期后不能再下载";
 }
 
 TEST_F(SharingTest, DownloadLimitIsEnforcedAtomically) {
@@ -568,16 +580,111 @@ TEST_F(SharingTest, DownloadLimitIsEnforcedAtomically) {
   ASSERT_TRUE(created.Ok()) << created.GetError().message;
   const std::string token = created.Value().plaintext_token;
 
-  EXPECT_TRUE(sharing_->PreparePublicDownload(token).Ok()) << "第 1 次";
-  EXPECT_TRUE(sharing_->PreparePublicDownload(token).Ok()) << "第 2 次";
+  EXPECT_TRUE(sharing_->PreparePublicDownload(token, "").Ok()) << "第 1 次";
+  EXPECT_TRUE(sharing_->PreparePublicDownload(token, "").Ok()) << "第 2 次";
 
-  auto third = sharing_->PreparePublicDownload(token);
+  auto third = sharing_->PreparePublicDownload(token, "");
   ASSERT_FALSE(third.Ok()) << "超过下载次数必须拒绝";
   EXPECT_EQ(third.GetError().code, "RESOURCE_NOT_FOUND") << "不泄露具体原因";
 
   auto link = share_repo_->FindById(created.Value().link.id);
   ASSERT_TRUE(link.Ok());
   EXPECT_EQ(link.Value()->download_count, 2) << "被拒绝的请求不能计数";
+}
+
+// ---- 分享密码（2026-10-03）--------------------------------------------------
+//
+// 用户口径：对外发文件要能"必须输密码"。安全上必须钉住四件事：
+//   ① 没输密码时**什么都不给**（连文件名都看不到，不然密码只挡下载）；
+//   ② 密码错不发票据，而且错误信息不区分"密码错/分享不存在"；
+//   ③ 有密码的分享，**直接访问下载 URL 必须被拒**（不然密码形同虚设）；
+//   ④ 票据只能用于它绑定的那个文件（换个分享用不了）。
+TEST_F(SharingTest, PasswordProtectedShareHidesEverythingUntilUnlocked) {
+  auto file = Upload(Owner(), root_id_, "secret.bin", Repeat('p', kMiB));
+  ASSERT_TRUE(file.Ok());
+  ShareCreateRequest request;
+  request.password = "open-sesame";
+  auto created = sharing_->CreateShare(Owner(), file.Value().id, request);
+  ASSERT_TRUE(created.Ok()) << created.GetError().message;
+  const std::string token = created.Value().plaintext_token;
+
+  // 库里只应有哈希，绝不能是明文
+  auto link = share_repo_->FindById(created.Value().link.id);
+  ASSERT_TRUE(link.Ok());
+  ASSERT_TRUE(link.Value().has_value());
+  EXPECT_FALSE(link.Value()->password_hash.empty());
+  EXPECT_EQ(link.Value()->password_hash.find("open-sesame"), std::string::npos)
+      << "明文密码绝不能落库";
+  EXPECT_EQ(link.Value()->password_hash.rfind("$argon2id$", 0), 0U) << "必须是 Argon2id 哈希";
+
+  // ① 未解锁：不给任何元数据
+  auto locked = sharing_->DescribePublic(token);
+  ASSERT_TRUE(locked.Ok()) << locked.GetError().message;
+  EXPECT_TRUE(locked.Value().requires_password);
+  EXPECT_TRUE(locked.Value().name.empty()) << "输密码之前连文件名都不能给";
+  EXPECT_EQ(locked.Value().size_bytes, 0U);
+  EXPECT_TRUE(locked.Value().mime_type.empty());
+  EXPECT_FALSE(locked.Value().can_download);
+
+  // ② 密码错：不发票据；错误与"分享不存在"同类，不泄露原因
+  auto wrong = sharing_->UnlockPublic(token, "wrong-password");
+  ASSERT_FALSE(wrong.Ok());
+  EXPECT_EQ(wrong.GetError().code, "UNAUTHENTICATED");
+
+  // ③ 未解锁直接下载：必须拒绝
+  auto bypass = sharing_->PreparePublicDownload(token, "");
+  ASSERT_FALSE(bypass.Ok()) << "有密码的分享不能靠直接访问下载地址绕过";
+  EXPECT_EQ(bypass.GetError().code, "UNAUTHENTICATED");
+
+  // ④ 正确密码：拿到票据，且票据能用
+  auto unlocked = sharing_->UnlockPublic(token, "open-sesame");
+  ASSERT_TRUE(unlocked.Ok()) << unlocked.GetError().message;
+  EXPECT_FALSE(unlocked.Value().download_ticket.empty());
+  EXPECT_EQ(unlocked.Value().share.name, "secret.bin") << "解锁后才给元数据";
+  EXPECT_TRUE(unlocked.Value().share.can_download);
+
+  auto download = sharing_->PreparePublicDownload(token, unlocked.Value().download_ticket);
+  ASSERT_TRUE(download.Ok()) << download.GetError().message;
+  EXPECT_EQ(download.Value().file.content_hash, Sha256Hex(Repeat('p', kMiB)));
+
+  // 票据是给**这个**文件签的：换一条分享（另一个文件）用不了
+  auto other_file = Upload(Owner(), root_id_, "other.bin", Repeat('q', kMiB));
+  ASSERT_TRUE(other_file.Ok());
+  auto other = sharing_->CreateShare(Owner(), other_file.Value().id, request);
+  ASSERT_TRUE(other.Ok());
+  auto cross = sharing_->PreparePublicDownload(other.Value().plaintext_token,
+                                               unlocked.Value().download_ticket);
+  ASSERT_FALSE(cross.Ok()) << "票据不能跨分享使用";
+}
+
+TEST_F(SharingTest, ShareWithoutPasswordStillWorksDirectly) {
+  auto file = Upload(Owner(), root_id_, "plain.bin", Repeat('r', kMiB));
+  ASSERT_TRUE(file.Ok());
+  ShareCreateRequest request;  // 不给密码
+  auto created = sharing_->CreateShare(Owner(), file.Value().id, request);
+  ASSERT_TRUE(created.Ok());
+  const std::string token = created.Value().plaintext_token;
+
+  auto view = sharing_->DescribePublic(token);
+  ASSERT_TRUE(view.Ok());
+  EXPECT_FALSE(view.Value().requires_password);
+  EXPECT_EQ(view.Value().name, "plain.bin") << "没有密码的分享行为不变";
+
+  auto unlock = sharing_->UnlockPublic(token, "");
+  ASSERT_TRUE(unlock.Ok()) << unlock.GetError().message;
+  EXPECT_TRUE(unlock.Value().download_ticket.empty()) << "不需要密码就不发票据";
+
+  EXPECT_TRUE(sharing_->PreparePublicDownload(token, "").Ok()) << "不带票据照样能下";
+}
+
+TEST_F(SharingTest, RejectsTooLongSharePassword) {
+  auto file = Upload(Owner(), root_id_, "toolong.bin", Repeat('s', kMiB));
+  ASSERT_TRUE(file.Ok());
+  ShareCreateRequest request;
+  request.password = std::string(200, 'x');
+  auto created = sharing_->CreateShare(Owner(), file.Value().id, request);
+  ASSERT_FALSE(created.Ok());
+  EXPECT_EQ(created.GetError().code, "INVALID_ARGUMENT");
 }
 
 TEST_F(SharingTest, ShareOnlyGrantsAccessToItsOwnResource) {
@@ -591,14 +698,14 @@ TEST_F(SharingTest, ShareOnlyGrantsAccessToItsOwnResource) {
   ASSERT_TRUE(created.Ok());
   const std::string token = created.Value().plaintext_token;
 
-  auto download = sharing_->PreparePublicDownload(token);
+  auto download = sharing_->PreparePublicDownload(token, "");
   ASSERT_TRUE(download.Ok());
   EXPECT_EQ(download.Value().resource.id, file_a.Value().id) << "分享链接只能访问它绑定的那个资源";
 
   // 构造一个指向 B 的分享，确认两者互不影响
   auto other = sharing_->CreateShare(Owner(), file_b.Value().id, request);
   ASSERT_TRUE(other.Ok());
-  auto other_download = sharing_->PreparePublicDownload(other.Value().plaintext_token);
+  auto other_download = sharing_->PreparePublicDownload(other.Value().plaintext_token, "");
   ASSERT_TRUE(other_download.Ok());
   EXPECT_EQ(other_download.Value().resource.id, file_b.Value().id);
   EXPECT_NE(other.Value().plaintext_token, token);
@@ -617,7 +724,7 @@ TEST_F(SharingTest, FolderShareCannotBeDownloaded) {
   EXPECT_FALSE(view.Value().can_download);
   EXPECT_FALSE(view.Value().download_blocked_reason.empty()) << "要给出可解释的原因";
 
-  auto download = sharing_->PreparePublicDownload(token);
+  auto download = sharing_->PreparePublicDownload(token, "");
   ASSERT_FALSE(download.Ok());
   EXPECT_EQ(download.GetError().code, "FORBIDDEN");
 }

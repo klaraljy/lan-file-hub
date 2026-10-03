@@ -19,6 +19,8 @@
 #include "lan_file_hub/infrastructure/audit_repository.h"
 #include "lan_file_hub/infrastructure/file_repository.h"
 #include "lan_file_hub/infrastructure/folder_repository.h"
+#include "lan_file_hub/infrastructure/jwt_service.h"
+#include "lan_file_hub/infrastructure/password_hasher.h"
 #include "lan_file_hub/infrastructure/permission_repository.h"
 #include "lan_file_hub/infrastructure/user_repository.h"
 #include "lan_file_hub/storage/object_storage.h"
@@ -43,6 +45,9 @@ struct ShareCreateRequest {
   std::string permission{"READ"};                  // READ | WRITE
   std::optional<std::int64_t> expires_in_seconds;  // 空表示不自动过期
   std::optional<std::int32_t> max_downloads;       // 空表示不限次数
+  // 分享密码（2026-10-03）：空 = 不需要密码（默认）。
+  // 服务端用 Argon2id 哈希后入库，明文不落库、不进日志、不回显。
+  std::optional<std::string> password;
 };
 
 struct ShareView {
@@ -63,6 +68,16 @@ struct PublicShareView {
   std::optional<std::int32_t> max_downloads;
   bool can_download{true};
   std::string download_blocked_reason;
+  // 这条分享要不要密码（2026-10-03）。为 true 时上面的名字/大小/类型**一律为空**
+  // ——没输密码之前不该看到任何元数据（否则密码只挡下载、挡不住"文件叫什么"）。
+  bool requires_password{false};
+};
+
+// 用密码解锁之后拿到的东西：资源信息 + 一张短票据（下载时带上它）
+struct PublicUnlock {
+  PublicShareView share;
+  std::string download_ticket;  // 无密码分享时为空（本来就能直接下）
+  std::int64_t ticket_expires_in_seconds{0};
 };
 
 class SharingService {
@@ -70,7 +85,8 @@ class SharingService {
   SharingService(PermissionRepository& permissions, ShareLinkRepository& shares,
                  FileRepository& files, FolderRepository& folders, UserRepository& users,
                  AuditLogRepository& audit, ObjectStorage& storage,
-                 const ResourcePermissionChecker& checker);
+                 const ResourcePermissionChecker& checker, const PasswordHasher& hasher,
+                 const JwtService& jwt);
 
   // ---- 权限管理 ----
 
@@ -108,14 +124,21 @@ class SharingService {
 
   [[nodiscard]] Result<PublicShareView> DescribePublic(std::string_view token);
 
+  // 用密码解锁一条分享（无密码的分享也走这里：等价于"直接放行"）。
+  // 密码错/分享不存在/已过期/次数用完，一律返回同一类错误，不泄露具体原因。
+  [[nodiscard]] Result<PublicUnlock> UnlockPublic(std::string_view token,
+                                                  std::string_view password);
+
   struct PublicDownload {
     ResolvedResource resource;
     std::string absolute_path;
     File file;  // 供 HTTP 层读 size/mime/name
   };
 
-  // 校验通过后**原子地**消费一次下载次数，再解析物理路径
-  [[nodiscard]] Result<PublicDownload> PreparePublicDownload(std::string_view token);
+  // 校验通过后**原子地**消费一次下载次数，再解析物理路径。
+  // ticket：需要密码的分享必须带上解锁时拿到的那张票据（⛔ 否则拿 URL 就能绕过密码）。
+  [[nodiscard]] Result<PublicDownload> PreparePublicDownload(std::string_view token,
+                                                             std::string_view ticket);
 
   // 管理员访问他人资源时补审计（读取类操作调用）
   void AuditAdminAccess(const Actor& actor, const ResolvedResource& resource,
@@ -123,6 +146,9 @@ class SharingService {
 
  private:
   [[nodiscard]] Status CanManage(const Actor& actor, const ResolvedResource& resource);
+
+  // 组装公开视图（不含任何内部标识）；密码门在 UnlockPublic 里，不在这里
+  [[nodiscard]] Result<PublicShareView> BuildPublicView(const ShareLink& link);
 
   PermissionRepository& permissions_;
   ShareLinkRepository& shares_;
@@ -132,6 +158,8 @@ class SharingService {
   AuditLogRepository& audit_;
   ObjectStorage& storage_;
   const ResourcePermissionChecker& checker_;
+  const PasswordHasher& hasher_;
+  const JwtService& jwt_;
 };
 
 }  // namespace lan_file_hub

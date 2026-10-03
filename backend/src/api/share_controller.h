@@ -3,6 +3,7 @@
 //   GET    /api/v1/resources/{resource_id}/shares   列出（不含 Token）
 //   DELETE /api/v1/shares/{share_id}                 撤销（幂等）
 //   GET    /api/v1/public/shares/{token}             公开查看（无需登录）
+//   POST   /api/v1/public/shares/{token}/unlock      用密码解锁（2026-10-03），返回下载票据
 //   GET    /api/v1/public/shares/{token}/download    公开下载（无需登录，支持 Range）
 #pragma once
 
@@ -22,6 +23,9 @@ class ShareController : public drogon::HttpController<ShareController> {
   ADD_METHOD_TO(ShareController::Revoke, "/api/v1/shares/{share_id}", drogon::Delete, "AuthFilter");
   // 公开接口：不需要 AuthFilter，但服务端仍然完整校验分享链接本身
   ADD_METHOD_TO(ShareController::PublicDescribe, "/api/v1/public/shares/{token}", drogon::Get);
+  // 解锁：公开，但**有速率限制**（防止拿它暴力猜密码）
+  ADD_METHOD_TO(ShareController::PublicUnlock, "/api/v1/public/shares/{token}/unlock",
+                drogon::Post);
   ADD_METHOD_TO(ShareController::PublicDownload, "/api/v1/public/shares/{token}/download",
                 drogon::Get);
   METHOD_LIST_END
@@ -40,6 +44,10 @@ class ShareController : public drogon::HttpController<ShareController> {
   void PublicDescribe(const drogon::HttpRequestPtr& req,
                       std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                       std::string token);
+
+  void PublicUnlock(const drogon::HttpRequestPtr& req,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                    std::string token);
 
   void PublicDownload(const drogon::HttpRequestPtr& req,
                       std::function<void(const drogon::HttpResponsePtr&)>&& callback,

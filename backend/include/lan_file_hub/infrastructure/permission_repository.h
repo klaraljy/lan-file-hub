@@ -92,6 +92,9 @@ struct ShareLink {
   std::optional<std::string> expires_at;
   std::optional<std::int32_t> max_downloads;
   std::int32_t download_count{0};
+  // 分享密码的 Argon2id 哈希（2026-10-03）；空串 = 该分享不需要密码。
+  // ⛔ 明文永不落库、永不进日志、永不进响应。
+  std::string password_hash;
   std::optional<std::string> revoked_at;
   std::string created_by;
   std::optional<std::string> last_access_at;

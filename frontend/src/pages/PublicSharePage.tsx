@@ -10,9 +10,10 @@
  * 公开接口不需要 Authorization 头，交给浏览器直接导航能得到原生的下载体验
  * （也不用把整个文件读进内存，见 filesApi.download 的已知限制说明）。
  */
-import { Button, Card, Empty, Result, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Input, Result, Space, Spin, Tag, Typography } from 'antd';
 import { DownloadOutlined, FileOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
@@ -24,8 +25,9 @@ import {
   publicDownloadUrl,
   publicShareErrorMessage,
 } from '../features/sharing/publicShareState';
+import { ApiError } from '../services/api';
 import { sharingApi } from '../services/sharingApi';
-import type { SharePermission } from '../types/share';
+import type { PublicShareView, SharePermission } from '../types/share';
 
 const PERMISSION_TEXT: Record<SharePermission, string> = {
   READ: '只读（可查看与下载）',
@@ -35,6 +37,13 @@ const PERMISSION_TEXT: Record<SharePermission, string> = {
 export function PublicSharePage() {
   const params = useParams<{ token: string }>();
   const token = params.token ?? '';
+
+  // 解锁后的分享（2026-10-03）：带密码的分享在输对密码之前，服务端什么都不给，
+  // 所以这一页要先"解锁"再展示；解锁成功会拿到一个带票据的下载地址。
+  const [unlocked, setUnlocked] = useState<PublicShareView | null>(null);
+  const [password, setPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   const query = useQuery({
     queryKey: ['public-share', token],
@@ -87,11 +96,57 @@ export function PublicSharePage() {
     );
   }
 
-  const view = query.data;
+  const view = unlocked ?? query.data;
   if (!view) {
     return (
       <CenteredCard>
         <Empty description="分享内容为空" />
+      </CenteredCard>
+    );
+  }
+
+  // 带密码、还没解锁：只给一个密码框（服务端在解锁前不返回任何文件信息）
+  if (view.requires_password && !unlocked) {
+    async function handleUnlock() {
+      setUnlocking(true);
+      setUnlockError('');
+      try {
+        const result = await sharingApi.unlockPublic(token, password);
+        setUnlocked(result);
+      } catch (error) {
+        setUnlockError(
+          error instanceof ApiError && error.code === 'UNAUTHENTICATED'
+            ? '密码不正确，请向分享者确认'
+            : '解锁失败，请稍后重试',
+        );
+      } finally {
+        setUnlocking(false);
+      }
+    }
+
+    return (
+      <CenteredCard title="这个分享需要密码">
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Typography.Text type="secondary">
+            分享者给这条链接设了密码，输入后才能看到文件名并下载。
+          </Typography.Text>
+          {unlockError && <Alert type="error" showIcon message={unlockError} />}
+          <Input.Password
+            value={password}
+            placeholder="请输入分享密码"
+            onChange={(event) => setPassword(event.target.value)}
+            onPressEnter={() => void handleUnlock()}
+          />
+          <Button
+            type="primary"
+            block
+            loading={unlocking}
+            disabled={!password}
+            onClick={() => void handleUnlock()}
+          >
+            打开分享
+          </Button>
+        </Space>
       </CenteredCard>
     );
   }
@@ -135,9 +190,10 @@ export function PublicSharePage() {
           <Button
             type="primary"
             icon={<DownloadOutlined />}
-            // 公开接口不带 Authorization，浏览器直接导航即可完成下载
+            // 公开接口不带 Authorization，浏览器直接导航即可完成下载。
+            // 带密码的分享用服务端给的 download_url（里面是一次性票据，15 分钟有效）。
             onClick={() => {
-              window.location.href = publicDownloadUrl(token);
+              window.location.href = view.download_url ?? publicDownloadUrl(token);
             }}
           >
             下载文件

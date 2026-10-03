@@ -12,6 +12,9 @@
 namespace lan_file_hub {
 namespace {
 
+// 分享密码解锁后的下载票据有效期（秒）：够用户点几次下载，又不至于长期有效
+constexpr std::uint32_t kShareUnlockTicketSeconds = 15U * 60U;
+
 Error NotFound() {
   return Error{"RESOURCE_NOT_FOUND", "资源不存在"};
 }
@@ -37,7 +40,8 @@ std::string JsonCompact(const nlohmann::json& value) {
 SharingService::SharingService(PermissionRepository& permissions, ShareLinkRepository& shares,
                                FileRepository& files, FolderRepository& folders,
                                UserRepository& users, AuditLogRepository& audit,
-                               ObjectStorage& storage, const ResourcePermissionChecker& checker)
+                               ObjectStorage& storage, const ResourcePermissionChecker& checker,
+                               const PasswordHasher& hasher, const JwtService& jwt)
     : permissions_(permissions),
       shares_(shares),
       files_(files),
@@ -45,7 +49,9 @@ SharingService::SharingService(PermissionRepository& permissions, ShareLinkRepos
       users_(users),
       audit_(audit),
       storage_(storage),
-      checker_(checker) {}
+      checker_(checker),
+      hasher_(hasher),
+      jwt_(jwt) {}
 
 Result<ResolvedResource> SharingService::Resolve(std::string_view resource_id) {
   if (resource_id.empty()) {
@@ -278,6 +284,20 @@ Result<ShareView> SharingService::CreateShare(const Actor& actor, std::string_vi
     return token.GetError();
   }
 
+  // 分享密码（2026-10-03）：只存 Argon2id 哈希。
+  // 长度上限 128：再长也没意义，只会让哈希变慢；空串视为"不需要密码"。
+  std::string password_hash;
+  if (request.password.has_value() && !request.password->empty()) {
+    if (request.password->size() > 128) {
+      return Error{"INVALID_ARGUMENT", "分享密码最长 128 个字符"};
+    }
+    auto hashed = hasher_.Hash(*request.password);
+    if (!hashed) {
+      return hashed.GetError();
+    }
+    password_hash = hashed.Value();
+  }
+
   ShareLink link;
   link.id = GenerateUuidV4();
   link.token_hash = HashShareToken(token.Value());
@@ -287,6 +307,7 @@ Result<ShareView> SharingService::CreateShare(const Actor& actor, std::string_vi
   link.max_downloads = request.max_downloads;
   link.created_by = actor.user_id;
   link.resource_name = resource.Value().name;
+  link.password_hash = password_hash;
   // 过期时间交给数据库按 now() 计算，不受应用进程时钟影响
   link.expires_in_seconds = request.expires_in_seconds;
 
@@ -303,7 +324,8 @@ Result<ShareView> SharingService::CreateShare(const Actor& actor, std::string_vi
   entry.resource_id = resource.Value().id;
   entry.detail_json = JsonCompact({{"share_id", created.Value().id},
                                    {"permission", request.permission},
-                                   {"max_downloads", request.max_downloads.value_or(0)}});
+                                   {"max_downloads", request.max_downloads.value_or(0)},
+                                   {"password", !password_hash.empty()}});
   (void)audit_.Record(entry);
 
   ShareView view;
@@ -390,6 +412,25 @@ Result<PublicShareView> SharingService::DescribePublic(std::string_view token) {
   }
   const ShareLink link = *found.Value();
 
+  // 需要密码的分享：**输密码之前什么都不给**（名字、大小、类型都不给）——
+  // 否则密码只挡住下载，挡不住"文件叫什么"。
+  if (!link.password_hash.empty()) {
+    PublicShareView locked;
+    locked.requires_password = true;
+    locked.resource_type = link.resource_type;
+    locked.permission = link.permission;
+    locked.expires_at = link.expires_at;
+    locked.download_count = link.download_count;
+    locked.max_downloads = link.max_downloads;
+    locked.can_download = false;
+    locked.download_blocked_reason = "这条分享需要密码，请输入密码后查看";
+    return locked;
+  }
+
+  return BuildPublicView(link);
+}
+
+Result<PublicShareView> SharingService::BuildPublicView(const ShareLink& link) {
   auto resource = Resolve(link.resource_id);
   if (!resource) {
     return resource.GetError();
@@ -404,6 +445,7 @@ Result<PublicShareView> SharingService::DescribePublic(std::string_view token) {
   view.expires_at = link.expires_at;
   view.download_count = link.download_count;
   view.max_downloads = link.max_downloads;
+  view.requires_password = !link.password_hash.empty();
   // 文件夹分享不支持打包下载；这里给出可解释的原因，前端据此隐藏按钮
   view.can_download = resource.Value().type == "file";
   if (!view.can_download) {
@@ -412,8 +454,8 @@ Result<PublicShareView> SharingService::DescribePublic(std::string_view token) {
   return view;
 }
 
-Result<SharingService::PublicDownload> SharingService::PreparePublicDownload(
-    std::string_view token) {
+Result<PublicUnlock> SharingService::UnlockPublic(std::string_view token,
+                                                  std::string_view password) {
   if (token.empty()) {
     return Error{"INVALID_ARGUMENT", "缺少分享 Token"};
   }
@@ -425,6 +467,68 @@ Result<SharingService::PublicDownload> SharingService::PreparePublicDownload(
     return ShareNotFound();
   }
   const ShareLink link = *found.Value();
+
+  PublicUnlock unlock;
+  if (link.password_hash.empty()) {
+    // 不需要密码：与"直接打开"等价，不发票据（下载接口也不会要求票据）
+    auto view = BuildPublicView(link);
+    if (!view) {
+      return view.GetError();
+    }
+    unlock.share = view.Value();
+    return unlock;
+  }
+
+  if (password.empty() || !hasher_.Verify(std::string(password), link.password_hash)) {
+    // ⛔ 不区分"密码错"与"分享不存在"，避免拿它当探测工具；日志里也不记密码
+    spdlog::warn("分享密码校验失败 | share_id={}", link.id);
+    return Error{"UNAUTHENTICATED", "密码不正确"};
+  }
+
+  // 通过：给一张短票据，下载时必须带上（票据绑定了文件，换文件用不了）
+  auto ticket =
+      jwt_.IssueDownloadTicket(link.created_by, link.resource_id, "", kShareUnlockTicketSeconds);
+  if (!ticket) {
+    return ticket.GetError();
+  }
+  auto view = BuildPublicView(link);
+  if (!view) {
+    return view.GetError();
+  }
+  unlock.share = view.Value();
+  unlock.download_ticket = ticket.Value();
+  unlock.ticket_expires_in_seconds = kShareUnlockTicketSeconds;
+  return unlock;
+}
+
+Result<SharingService::PublicDownload> SharingService::PreparePublicDownload(
+    std::string_view token, std::string_view ticket) {
+  if (token.empty()) {
+    return Error{"INVALID_ARGUMENT", "缺少分享 Token"};
+  }
+  auto found = shares_.FindUsableByTokenHash(HashShareToken(token));
+  if (!found) {
+    return found.GetError();
+  }
+  if (!found.Value().has_value()) {
+    return ShareNotFound();
+  }
+  const ShareLink link = *found.Value();
+
+  // 需要密码的分享：必须带上下载票据（解锁时发的），否则拿 URL 就绕过了密码
+  if (!link.password_hash.empty()) {
+    if (ticket.empty()) {
+      return Error{"UNAUTHENTICATED", "这条分享需要密码，请先输入密码"};
+    }
+    auto claims = jwt_.VerifyDownloadTicket(std::string(ticket));
+    if (!claims) {
+      return Error{"UNAUTHENTICATED", "下载凭证无效或已过期，请重新输入密码"};
+    }
+    if (claims.Value().file_id != link.resource_id) {
+      // 票据是给**别的文件**签的：不认
+      return Error{"UNAUTHENTICATED", "下载凭证与这条分享不匹配"};
+    }
+  }
 
   auto resource = Resolve(link.resource_id);
   if (!resource) {

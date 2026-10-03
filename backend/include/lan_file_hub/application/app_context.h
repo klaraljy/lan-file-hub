@@ -79,6 +79,8 @@ struct AppContext {
   std::shared_ptr<RateLimiter> login_limiter;
   std::shared_ptr<RateLimiter> login_ip_limiter;
   std::shared_ptr<RateLimiter> upload_limiter;
+  // 分享密码解锁限流（2026-10-03）：按 IP + 分享 Token 计数，挡住暴力猜密码
+  std::shared_ptr<RateLimiter> share_unlock_limiter;
   // 字节级限速（阶段十二第 4 条）：按用户（公开下载按分享链接）限制下载速率；
   // 未配置速率时 enabled() 为 false，下载继续走零拷贝路径
   std::shared_ptr<ByteRateLimiter> download_limiter;

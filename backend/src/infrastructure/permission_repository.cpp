@@ -24,7 +24,7 @@ constexpr char kGrantColumns[] =
 constexpr char kShareColumns[] =
     "s.id, s.token_hash, s.resource_type, s.resource_id::text AS resource_id, s.permission, "
     "to_char(s.expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS expires_at, "
-    "s.max_downloads, s.download_count, "
+    "s.max_downloads, s.download_count, s.password_hash, "
     "to_char(s.revoked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS revoked_at, "
     "s.created_by::text AS created_by, "
     "to_char(s.last_access_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') "
@@ -68,6 +68,7 @@ ShareLink ShareFromRow(const RowType& row) {
     link.max_downloads = row["max_downloads"].template as<std::int32_t>();
   }
   link.download_count = row["download_count"].template as<std::int32_t>();
+  link.password_hash = row["password_hash"].template as<std::string>();
   if (!row["revoked_at"].is_null()) {
     link.revoked_at = row["revoked_at"].template as<std::string>();
   }
@@ -408,14 +409,16 @@ Result<ShareLink> ShareLinkRepository::Create(const ShareLink& link) {
       params.append(nullptr);
     }
     params.append(link.created_by);
+    // 分享密码的哈希（空串 = 不需要密码）；明文不经过这里
+    params.append(link.password_hash);
     // 相对有效期由数据库算（now() + interval），绝对时间直接用；都没有就是不过期
     const pqxx::result rows = tx.exec(
         "INSERT INTO share_links (id, token_hash, resource_type, resource_id, permission, "
-        "expires_at, max_downloads, created_by) "
+        "expires_at, max_downloads, created_by, password_hash) "
         "VALUES ($1::uuid, $2, $3, $4::uuid, $5, "
         "        CASE WHEN $6::bigint IS NOT NULL THEN now() + make_interval(secs => $6::bigint) "
         "             ELSE $7::timestamptz END, "
-        "        $8, $9::uuid) "
+        "        $8, $9::uuid, $10) "
         "RETURNING id",
         params);
     tx.commit();

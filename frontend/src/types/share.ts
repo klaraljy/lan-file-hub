@@ -27,6 +27,8 @@ export interface ShareLink {
   created_at: string;
   revoked: boolean;
   revoked_at: string | null;
+  /** 这条链接有没有设密码（2026-10-03）；哈希不会离开服务端 */
+  requires_password?: boolean;
   expires_at: string | null;
   max_downloads: number | null;
   last_access_at: string | null;
@@ -72,4 +74,10 @@ export interface PublicShareView {
   max_downloads: number | null;
   can_download: boolean;
   download_blocked_reason: string;
+  /** 这条分享要不要密码（2026-10-03）；为 true 时上面的元数据一律为空，先输密码 */
+  requires_password?: boolean;
+  /** 解锁成功后服务端给的下载地址（带一次性票据）与票据有效期 */
+  download_url?: string;
+  ticket?: string;
+  ticket_expires_in?: number;
 }

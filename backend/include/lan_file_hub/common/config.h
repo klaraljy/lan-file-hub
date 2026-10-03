@@ -68,6 +68,8 @@ struct AppConfig {
   std::uint32_t login_rate_limit_per_minute{10};     // 同一 IP + 同一账号
   std::uint32_t login_ip_rate_limit_per_minute{60};  // 同一 IP（挡住换用户名撞库）
   std::uint32_t upload_rate_limit_per_minute{120};   // 同一用户创建上传会话
+  // 分享密码解锁（2026-10-03）：同一 IP + 同一条分享，每分钟允许试几次
+  std::uint32_t share_unlock_rate_limit_per_minute{10};
   std::uint32_t upload_session_ttl_seconds{24U * 60U * 60U};
 
   std::string jwt_secret;  // 生产环境必填；不得写入源码

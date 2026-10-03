@@ -20,6 +20,8 @@ export interface CreateShareInput {
   permission: SharePermission;
   expiresInSeconds?: number;
   maxDownloads?: number;
+  /** 分享密码（2026-10-03）：留空 = 不需要密码 */
+  password?: string;
 }
 
 export const sharingApi = {
@@ -55,6 +57,8 @@ export const sharingApi = {
     const body: Record<string, unknown> = { permission: input.permission };
     if (input.expiresInSeconds) body.expires_in_seconds = input.expiresInSeconds;
     if (input.maxDownloads) body.max_downloads = input.maxDownloads;
+    // 分享密码：明文只在这一刻发给服务端，服务端立刻哈希，之后谁也取不回来
+    if (input.password) body.password = input.password;
     const response = await http.post<ApiEnvelope<ShareLink>>(
       `/resources/${resourceId}/shares`,
       body,
@@ -82,6 +86,18 @@ export const sharingApi = {
   /** 公开接口：不需要登录，用于分享页预览 */
   async describePublic(token: string): Promise<PublicShareView> {
     const response = await http.get<ApiEnvelope<PublicShareView>>(`/public/shares/${token}`);
+    return unwrap(response.data);
+  },
+
+  /**
+   * 公开接口：用密码解锁一条分享（2026-10-03）。
+   * 无密码的分享也走这里 —— 相当于"直接放行"，返回里没有票据。
+   */
+  async unlockPublic(token: string, password: string): Promise<PublicShareView> {
+    const response = await http.post<ApiEnvelope<PublicShareView>>(
+      `/public/shares/${token}/unlock`,
+      { password },
+    );
     return unwrap(response.data);
   },
 };

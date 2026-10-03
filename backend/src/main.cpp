@@ -174,7 +174,8 @@ int main(int /*argc*/, char** /*argv*/) {
       *context->permissions_repo, *context->shares, *context->permissions);
   context->sharing_service = std::make_shared<SharingService>(
       *context->permissions_repo, *context->shares, *context->files, *context->folders,
-      *context->users, *context->audit, *context->storage, *context->permissions);
+      *context->users, *context->audit, *context->storage, *context->permissions,
+      *context->password_hasher, *context->jwt);
   // 邀请制注册（用户 2026-10-02）：ALLOW_SELF_REGISTRATION=false 时注册必须带有效邀请
   context->invites = std::make_shared<InviteService>(*context->invites_repo);
   context->allow_self_registration = config.allow_self_registration;
@@ -192,6 +193,9 @@ int main(int /*argc*/, char** /*argv*/) {
       static_cast<int>(config.login_ip_rate_limit_per_minute), std::chrono::seconds(60));
   context->upload_limiter = std::make_shared<RateLimiter>(
       static_cast<int>(config.upload_rate_limit_per_minute), std::chrono::seconds(60));
+  // 分享密码解锁（2026-10-03）：按 IP + Token 限流，防止拿公开接口猜密码
+  context->share_unlock_limiter = std::make_shared<RateLimiter>(
+      static_cast<int>(config.share_unlock_rate_limit_per_minute), std::chrono::seconds(60));
   // 下载限速（阶段十二）：0 表示不限速；开启后下载改走异步 chunked 流按令牌桶发送
   context->download_limiter =
       std::make_shared<ByteRateLimiter>(config.download_rate_limit_bytes_per_second);

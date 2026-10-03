@@ -21,6 +21,7 @@ JWT_SECRET
 JWT_EXPIRE_SECONDS
 JWT_REMEMBER_EXPIRE_SECONDS
 DOWNLOAD_RATE_LIMIT
+SHARE_UNLOCK_RATE_LIMIT_PER_MINUTE
 LOG_LEVEL
 CORS_ALLOWED_ORIGINS
 WEB_ROOT
@@ -44,6 +45,10 @@ APP_APK_PATH
 > 默认 `2592000`（30 天），允许 1 小时 ~ 365 天。不勾时仍用 `JWT_EXPIRE_SECONDS`（默认 1 小时）。
 > 用户真机反馈"每次打开 App 都要重新登录"，这是配套改动（另一半在前端 `tokenStore`：
 > 勾了才把令牌放进 `localStorage`）。风险与生产替代方案见 `docs/api.md`「认证方案」。
+
+> `SHARE_UNLOCK_RATE_LIMIT_PER_MINUTE`（2026-10-03）：分享密码解锁接口的限流，
+> 按 **IP + 分享 Token** 计数，默认 `10`（允许 1~600）。分享链接是公开的，
+> 不限流就等于让人随便猜密码。见 `docs/api.md`「分享密码」。
 
 ### 配置要求
 

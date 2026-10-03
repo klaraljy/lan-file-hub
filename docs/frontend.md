@@ -380,6 +380,7 @@ QUOTA_EXCEEDED
 | 搜索 `pages/SearchPage.tsx`（2026-10-03） | 左侧栏「搜索」入口（手机从「我的」进），走 `GET /api/v1/search`：文件名/文件夹名子串匹配、**跨所有文件夹**、只搜自己的。结果里显示"在哪个文件夹"并可一键跳过去；文件夹以标签形式给出。空关键字/无结果都有明确文案，不留白页 |
 | 预览 `components/FilePreviewModal.tsx`（2026-10-03） | 图片（`<img>`）、PDF（`<iframe>`）、文本（带 Token 读回来，超 256 KB 只显示开头）可以直接看；**其它类型老实说"下载查看"**。图片地址走**一次性下载票据**（`POST /files/{id}/download-ticket`）——`<img src>` 不带 Authorization 头，票据是既有机制（AGENTS §15.2），⛔ 不要为预览新开公开接口、也不要回到 blob |
 | 缩略图 `components/FileThumbnail.tsx`（2026-10-03） | **只有图片**才去换票据加载小图，其它类型渲染图标占位、**不发请求**（列表里几十个文件不能每个都白跑）。挂载在文件卡片（手机）与搜索结果里 |
+| 分享密码 `components/ShareDialog.tsx` + `pages/PublicSharePage.tsx`（2026-10-03） | 创建链接时可填**密码**（还可设有效期与下载上限）；公开页遇到 `requires_password` 时**先只显示一个密码框**，输对后调 `/unlock` 拿到完整信息与带票据的 `download_url`。⛔ 输密码之前页面上不能出现文件名/大小（服务端也不返回） |
 | 「配套手机应用」卡片 `pages/MyPage.tsx` 的 `PhoneAppCard` | 2026-10-03 新增：显示**版本 · 大小 · 构建时间**（全部来自 `GET /api/v1/app/release`，每次进页面重拉，不写死）+ 「下载安装」原生下载按钮；电脑上多一个「用手机扫码安装」（`ResponsiveSheet` + `ShareLinkBox`，二维码里是局域网地址，见 `services/publicUrl.ts` 的 `buildAppDownloadUrl`）。服务器上没有安装包时显示"还没有准备好安装包"，不弹错误 |
 | 文件页 `pages/FilesPage.tsx` | 列表视图用**卡片列表**；**搜索框固定在顶部**（滚动时也随时能过滤）；工具栏换行排布 |
 | 卡片 `components/FileCardList.tsx` | **整张卡可点**（文件夹进入、文件看详情，右侧有 `>` 提示）；名字 16px；**「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认；容器底部留 88px，最后一张不会被悬浮条挡住 |

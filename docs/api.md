@@ -746,20 +746,48 @@ POST   /api/v1/resources/{resource_id}/shares
 GET    /api/v1/resources/{resource_id}/shares
 DELETE /api/v1/shares/{share_id}
 GET    /api/v1/public/shares/{token}
+POST   /api/v1/public/shares/{token}/unlock        # 用密码解锁（2026-10-03）
 GET    /api/v1/public/shares/{token}/download
 
 # 别人分享给我的资源（含权限级别；只返回仍有效、且我是被授权人的记录）
 GET    /api/v1/shared-with-me
 ```
 
+创建时可选字段（都可省）：
+
+```json
+{
+  "permission": "READ",
+  "expires_in_seconds": 604800,
+  "max_downloads": 5,
+  "password": "给对方的密码"
+}
+```
+
 要点：
 
 - 创建成功后只能向用户展示一次明文 Token，服务端不保存明文 Token，只保存 Token 的哈希值。
-- 支持选择只读或可写、设置过期时间、撤销链接、查看访问次数。
+- 支持选择只读或可写、设置过期时间（最长 365 天）、下载次数上限、撤销链接、查看访问次数。
 - 分享链接访问必须校验：是否过期、是否被撤销、是否达到下载次数、是否允许下载文件夹、是否需要密码。
-- 密码分享属于可选功能，不纳入最小 MVP。
 - 重复删除分享链接必须幂等。
 - `/api/v1/public/shares/...` 为公开接口，但仍须完成上述校验。
+
+### 分享密码（2026-10-03，用户要求）
+
+对外发文件时经常需要"必须输密码才能拿"。实现与安全边界：
+
+| 环节 | 行为 |
+|---|---|
+| 存 | 只存 **Argon2id 哈希**（与用户口令同口径）；明文不落库、不进日志、不回显。空 = 不需要密码 |
+| 查看 `GET /public/shares/{token}` | 需要密码时返回 `requires_password: true`，**其余元数据一律为空**（名字/大小/类型都不给 —— 否则密码只挡下载，挡不住"文件叫什么"） |
+| 解锁 `POST /public/shares/{token}/unlock` | 请求体 `{"password": "..."}`；正确 → 返回完整视图 + `download_url`（内含一次性票据，15 分钟）+ `ticket`/`ticket_expires_in`；错误 → `401 UNAUTHENTICATED`"密码不正确" |
+| 下载 | 需要密码的分享**必须带解锁时拿到的票据**（`?ticket=...`）：⛔ 否则直接访问下载地址就绕过了密码。票据绑定文件，**换一条分享用不了** |
+| 限流 | 解锁接口按 **IP + Token** 限流（`SHARE_UNLOCK_RATE_LIMIT_PER_MINUTE`，默认 10/分钟），挡住暴力猜密码；超限 `429 RATE_LIMITED` |
+| 无密码分享 | 行为与之前完全一致：`unlock` 也接受（等价放行），返回里没有票据，下载不需要票据 |
+
+> 为什么解锁后发的是"下载票据"而不是新的会话令牌：票据本来就是给**浏览器原生下载**用的
+> （`<a href>` 带不了 Authorization 头，AGENTS §15.2），且绑定了文件与有效期；
+> 复用它既不用新造一套凭据，也不会把分享密码变成一把"万能钥匙"。
 
 ## 权限端点
 

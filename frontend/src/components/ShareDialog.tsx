@@ -12,6 +12,7 @@ import {
   Card,
   Empty,
   Form,
+  Input,
   InputNumber,
   Popconfirm,
   Select,
@@ -72,7 +73,13 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
   const shares = useShares(resourceId, open);
   const createShare = useCreateShare(resourceId);
   const revokeShare = useRevokeShare(resourceId);
-  const [form] = Form.useForm<{ permission: SharePermission; expires: number; maxDownloads?: number }>();
+  const [form] = Form.useForm<{
+    permission: SharePermission;
+    expires: number;
+    maxDownloads?: number;
+    /** 分享密码（2026-10-03）：留空 = 谁拿到链接都能下 */
+    password?: string;
+  }>();
   const [createdToken, setCreatedToken] = useState<{ token: string; url: string; warning?: string } | null>(
     null,
   );
@@ -84,6 +91,8 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
         permission: values.permission,
         expiresInSeconds: values.expires ? Number(values.expires) : undefined,
         maxDownloads: values.maxDownloads ? Number(values.maxDownloads) : undefined,
+        // 空串不传：后端把「没有密码」与「空密码」当同一件事
+        password: values.password?.trim() ? values.password.trim() : undefined,
       });
       // 先问一次服务端"当前的局域网地址是多少"：用户可能刚换过网络（WiFi ↔ 热点），
       // 用打开页面时的旧地址拼出来的链接，对方手机打不开
@@ -155,6 +164,14 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
         <Form.Item label="下载上限" name="maxDownloads">
           <InputNumber min={1} max={100000} placeholder="不限" style={{ width: 110 }} />
         </Form.Item>
+        {/* 分享密码（2026-10-03，用户要求）：填了就要求对方先输密码才能看到文件名、才能下载 */}
+        <Form.Item
+          label="密码"
+          name="password"
+          tooltip="填了就要求对方先输入密码，才能看到文件名并下载"
+        >
+          <Input.Password placeholder="不设密码" style={{ width: 150 }} autoComplete="new-password" />
+        </Form.Item>
         <Form.Item>
           <Button type="primary" loading={createShare.isPending} onClick={() => void handleCreate()}>
             创建链接
@@ -204,6 +221,8 @@ export function ShareDialog({ file, folder, open, onClose }: Props) {
               <Space size={6} wrap>
                 <Tag color={status.color}>{status.text}</Tag>
                 <Tag>{SHARE_PERMISSION_LABELS[link.permission]}</Tag>
+                {/* 有没有设密码（2026-10-03）：密码哈希不出服务端，这里只看布尔值 */}
+                {link.requires_password && <Tag color="purple">已设密码</Tag>}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   访问 {link.download_count}
                   {link.max_downloads !== null ? ` / ${link.max_downloads}` : ''} 次

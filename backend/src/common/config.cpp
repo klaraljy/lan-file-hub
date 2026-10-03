@@ -391,6 +391,13 @@ Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
   }
   config.download_rate_limit_bytes_per_second = rate.Value();
 
+  // 分享密码解锁限流（2026-10-03）：下限 1、上限 600（每分钟）
+  auto unlock_rate = PickUint(dotenv, "SHARE_UNLOCK_RATE_LIMIT_PER_MINUTE", 10, 1, 600);
+  if (!unlock_rate) {
+    return unlock_rate.GetError();
+  }
+  config.share_unlock_rate_limit_per_minute = static_cast<std::uint32_t>(unlock_rate.Value());
+
   config.cors_allowed_origins =
       SplitList(PickString(dotenv, "CORS_ALLOWED_ORIGINS", "http://localhost:5173"));
   if (config.cors_allowed_origins.empty()) {
