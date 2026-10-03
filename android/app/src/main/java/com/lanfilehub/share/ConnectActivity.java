@@ -64,7 +64,7 @@ public class ConnectActivity extends Activity {
 
     listView.setOnItemLongClickListener(
         (parent, view, position, id) -> {
-          confirmRemove((ServerStore.Server) adapter.getItem(position));
+          showActions((ServerStore.Server) adapter.getItem(position));
           return true;
         });
 
@@ -132,6 +132,58 @@ public class ConnectActivity extends Activity {
     intent.putExtra(WebViewActivity.EXTRA_URL, server.baseUrl() + "/");
     intent.putExtra(WebViewActivity.EXTRA_TITLE, server.displayName());
     startActivity(intent);
+  }
+
+  /**
+   * 长按一条：编辑地址 / 删除。
+   *
+   * <p>为什么必须有"编辑地址"（用户 2026-10-02 实测连不上）：电脑换网络（校园网 ↔ 手机热点）
+   * 之后局域网地址会变，存的旧地址就永远连不上 —— 用户得能改，而不是只能删了重加。
+   */
+  private void showActions(ServerStore.Server server) {
+    new AlertDialog.Builder(this)
+        .setTitle(server.displayName() + "（" + server.baseUrl() + "）")
+        .setItems(
+            new CharSequence[] {getString(R.string.connect_action_edit), getString(R.string.connect_action_remove)},
+            (dialog, which) -> {
+              if (which == 0) {
+                showEditDialog(server);
+              } else {
+                confirmRemove(server);
+              }
+            })
+        .show();
+  }
+
+  /** 编辑地址：输入框里预填当前地址，确认后按新地址重写这条记录 */
+  private void showEditDialog(ServerStore.Server server) {
+    final EditText input = new EditText(this);
+    input.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+    input.setText(server.host + ":" + server.port);
+    LinearLayout wrapper = new LinearLayout(this);
+    wrapper.setPadding(48, 16, 48, 0);
+    wrapper.addView(input);
+
+    new AlertDialog.Builder(this)
+        .setTitle(R.string.connect_edit_title)
+        .setMessage(R.string.connect_edit_message)
+        .setView(wrapper)
+        .setNegativeButton(R.string.connect_cancel, null)
+        .setPositiveButton(
+            R.string.connect_edit_confirm,
+            (dialog, which) -> {
+              ServerStore.Server parsed = ServerStore.parse(input.getText().toString());
+              if (parsed == null) {
+                toast(R.string.connect_add_invalid);
+                return;
+              }
+              ServerStore.remove(this, server);
+              ServerStore.addOrUpdate(this, parsed);
+              reloadServers();
+              probeAll();
+              toast(R.string.connect_edit_done);
+            })
+        .show();
   }
 
   private void showAddDialog() {
