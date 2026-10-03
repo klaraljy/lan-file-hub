@@ -22,22 +22,30 @@
 portable/
 ├── 启动.cmd            # 用户入口：双击 → 打印地址面板 + 自动打开浏览器 + 托盘图标（自动启动服务）
 ├── 停止.cmd            # 停止（数据保留）
+├── 备份.cmd            # 一键备份：数据库 + 文件对象 + 清单（2026-10-03）
+├── 恢复.cmd            # 一键恢复：先核对清单、再自动另存当前状态，二次确认后才覆盖（2026-10-03）
+├── 开机自启.cmd         # 开机自启开关（启动文件夹快捷方式，不需要管理员，随时可撤销；默认关闭）
+├── 自动上传.cmd         # 「放进文件夹就自动上传」：交互问本地文件夹与账号（2026-10-03）
 ├── 设为管理员.cmd       # 把**已有**账号提升为管理员（不需要口令；用户 2026-10-02 要求）
 ├── favicon.ico         # 桌面快捷方式与网页标签的图标（源头 frontend\public\favicon.ico）
 ├── 使用说明.txt         # 大白话说明（GBK 编码，记事本直接可读）
 ├── README.md           # 面向开发者/维护者
+├── backups/            # 运行时：备份产物（每次一个时间戳目录；gitignore，里面是用户数据）
 ├── app/                # ← portable-setup.ps1 生成：后端 exe、迁移工具、migrations、.env、web/
 ├── pgsql/              # ← portable-setup.ps1 下载：EDB 免安装 PostgreSQL
 ├── redis/              # ← portable-setup.ps1 拷贝：Redis for Windows
-├── tools/              # ← portable-setup.ps1 拷贝：tray.ps1、_env.ps1、make-admin.ps1（让便携包自包含）
+├── tools/              # ← portable-setup.ps1 拷贝：tray.ps1、_env.ps1、make-admin.ps1、备份/恢复/自启/自动上传脚本
 ├── data/               # 运行时：data\pg（数据库）、data\redis、data\storage（文件对象）
 └── logs/               # 运行时：backend.log/.err、postgres.log、redis.log、tray 相关
 ```
 
-`.gitignore` 里**逐个列出**了 `app/`、`pgsql/`、`redis/`、`tools/`、`data/`、`logs/`
+`.gitignore` 里**逐个列出**了 `app/`、`pgsql/`、`redis/`、`tools/`、`data/`、`logs/`、`backups/`
 （不用通配符 —— 全局 `AGENTS.md` §2.2 记录过 `.gitignore` negation 被父目录规则吃掉的坑）。
-仓库里只提交骨架：三个 `.cmd`、`使用说明.txt`、`README.md`
+仓库里只提交骨架：几个 `.cmd`、`使用说明.txt`、`README.md`
 （`favicon.ico` 由 `portable-setup.ps1` 从 `frontend\public\` 拷进来）。
+
+> ⛔ 所有 `.cmd` 一律**纯 ASCII、无 BOM**：`cmd.exe` 会把 UTF-8 BOM 当成第一行的一部分而报错；
+> 中文写在 `.ps1` 里（那些脚本带 BOM，PowerShell 5.1 才不会乱码）。
 
 ## 3. 准备（在开发机上跑一次）
 
@@ -142,8 +150,36 @@ cd frontend; npm run build; cd ..          # 前端 dist（1.4 MB 左右）
      所以 `Start-Stack` 在端口通了之后还要用 `pg_isready.exe` 问到 `accepting connections` 才启动后端。
      复现与验收：`pg_ctl stop -m immediate` 模拟崩溃 → 再用托盘启动，后端日志里不应出现任何连接失败。
 
-## 7. 桌面入口（带图标的快捷方式）
+## 7. 备份、恢复、开机自启、自动上传（2026-10-03）
 
+四个双击入口，都不需要 Docker、不需要管理员权限：
+
+| 入口 | 脚本 | 干什么 |
+|---|---|---|
+| `备份.cmd` | `tools\portable-backup.ps1` | `pg_dump -Fc` 导出数据库 + `tar` 打包 `data\storage` + 写 `manifest.json`（大小、SHA-256、迁移版本、用户/文件/目录计数）。默认落到 `portable\backups\<时间戳>\`；`-OutDir D:\backups` 可以放到别的盘（**建议**：备份与原始数据别放同一块盘） |
+| `恢复.cmd` | `tools\portable-restore.ps1` | ① 核对清单哈希 → ② **先给当前状态做一次备份**（失败就中止，不冒险）→ ③ 停服务 → ④ 重建库 + `pg_restore` → ⑤ 恢复文件对象（先解到临时目录，失败时原对象不动）→ ⑥ 重启服务并探活。不带参数会列出可用备份让你挑；`-Force` 跳过二次确认（自动化用） |
+| `开机自启.cmd` | `tools\autostart.ps1` | 在**当前用户的启动文件夹**放一个指向 `启动.cmd` 的快捷方式。参数：无 = 打开，`-Disable` = 关掉，`-Status` = 只看状态。**默认关闭**，脚本不会自己打开 |
+| `自动上传.cmd` | `tools\watch-folder.ps1` | 盯住一个本地文件夹，丢进去的文件自动传到服务器（单向：本地 → 服务器）。令牌存 `%LOCALAPPDATA%\lan-file-hub\watch-token.txt`（⛔ 不存口令），已传清单存同级 `watch-state.json`，重复运行不会重复上传 |
+
+**两条踩过的坑（改这些脚本时别再犯）**
+
+1. ⛔ **先备份再停服务**：数据库停了 `pg_dump` 连不上，会产出 **0 字节的空 dump**。
+   第一次写恢复脚本时就踩了（脚本先停服务再"恢复前备份"）→ 现在 pre-backup 在停服务之前，
+   且失败即中止；恢复入口也会拒绝空 dump。
+2. ⛔ **启停服务一律用 `Start-Process`（脱离式）**：写成 `& pwsh -File tray.ps1 *> log` 会**永久卡住**
+   —— 被启动的 PG/Redis/后端继承那个重定向句柄，父进程永远等不到结束（AGENTS §11.1 的同一个坑，
+   当时的表现是"命令跑了 7 分钟没动静"）。
+
+**实测（2026-10-03，便携实例）**
+
+```text
+备份：database.dump 41.5 KB（users=3 files=2 folders=3，迁移 0001…0011）+ storage.tar 0.34 MB + manifest.json
+恢复：恢复到该备份 → users=3 files=2 folders=3（与清单一致）→ /health/live = 200，用时 24.5 秒
+自动上传：2 个文件（含子目录）→ 服务器上出现 2 个；再跑 = 0 个重传；新增 1 个 = 只传 1 个
+开机自启：-Status 显示"未开启"，脚本没有擅自打开（是否开启由用户决定）
+```
+
+## 8. 桌面入口（带图标的快捷方式）
 **只有快捷方式能带自定义图标**（`.cmd` 只能显示系统默认图标），所以桌面入口是 `lan-file-hub.lnk`：
 
 ```powershell

@@ -36,6 +36,8 @@ import {
 } from '../features/trash/useTrash';
 import type { TrashItem, TrashItemType } from '../types/trash';
 import { MobileCardList, MobileItemCard } from '../components/MobileItemCard';
+import { QuotaWarning } from '../components/QuotaWarning';
+import { daysLeftInTrash, trashExpiryLabel } from '../features/files/limits';
 import { useIsMobile, TOUCH_HEIGHT } from '../hooks/useIsMobile';
 
 function formatBytes(bytes: number): string {
@@ -135,6 +137,19 @@ export function TrashPage() {
       render: (_value, item) => new Date(item.deleted_at).toLocaleString(),
     },
     {
+      // 保留期提示（2026-10-03）：让用户知道「什么时候会真的没」，不用自己拿删除时间去算
+      title: '何时永久删除',
+      key: 'expiry',
+      width: 150,
+      render: (_value, item) => (
+        <Typography.Text
+          type={daysLeftInTrash(item.deleted_at, retentionDays) === 0 ? 'danger' : 'secondary'}
+        >
+          {trashExpiryLabel(item.deleted_at, retentionDays)}
+        </Typography.Text>
+      ),
+    },
+    {
       title: '操作',
       key: 'actions',
       width: 200,
@@ -174,12 +189,14 @@ export function TrashPage() {
 
   return (
     <Card title="回收站">
+      {/* 空间快满时提醒（回收站里的东西照样占配额，2026-10-03） */}
+      <QuotaWarning />
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
         message={`回收站保留 ${retentionDays} 天`}
-        description="删除的资源仍占用存储空间；永久删除或超过保留期后，对象会被后台任务清理。"
+        description="删除的资源仍占用存储空间；超过保留期后会被后台任务永久清理，列表里每一行都写了还剩几天。"
       />
 
       <Space style={{ marginBottom: 16 }} wrap>

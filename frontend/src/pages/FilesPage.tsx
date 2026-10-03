@@ -54,6 +54,7 @@ import { FileCardList } from '../components/FileCardList';
 import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileGrid } from '../components/FileGrid';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { QuotaWarning } from '../components/QuotaWarning';
 import { FolderBreadcrumb } from '../components/FolderBreadcrumb';
 import { PermissionDialog } from '../components/PermissionDialog';
 import { ResponsiveSheet } from '../components/ResponsiveSheet';
@@ -440,6 +441,8 @@ export function FilesPage() {
 
   return (
     <Card>
+      {/* 空间快满时提醒（2026-10-03）：在最常用的页面上说清楚，不等到上传失败才报错 */}
+      <QuotaWarning />
       <FolderBreadcrumb chain={chain} />
 
       {/* 手机：搜索固定在顶部 */}
