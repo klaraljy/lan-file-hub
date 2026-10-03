@@ -17,6 +17,15 @@ import java.util.List;
 public class ServerDiscoveryTest {
 
   @Test
+  public void portsToScanAlwaysIncludesThePortableDefault() {
+    // ⛔ 2026-10-03 踩过的坑：原来只扫"历史记录第一条的端口"，用户以前连过 5173（开发端口）
+    //    时就去扫一个没人听的端口 → 永远找不到电脑。默认端口必须无条件包含。
+    org.junit.Assert.assertArrayEquals(new int[] {9180}, ServerDiscovery.portsToScan(0));
+    org.junit.Assert.assertArrayEquals(new int[] {9180}, ServerDiscovery.portsToScan(9180));
+    org.junit.Assert.assertArrayEquals(new int[] {9180, 5173}, ServerDiscovery.portsToScan(5173));
+  }
+
+  @Test
   public void candidatesForSlash24SkipsNetworkBroadcastAndSelf() {
     List<String> hosts = ServerDiscovery.candidates("192.168.43.240", 24);
 

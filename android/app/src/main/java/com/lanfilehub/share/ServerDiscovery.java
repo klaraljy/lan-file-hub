@@ -152,47 +152,72 @@ public final class ServerDiscovery {
     }
   }
 
-  /**
-   * 扫一遍当前网段。返回**排序后的**结果（地址小的在前，界面顺序稳定）。
-   *
-   * @param ownIp 自己的地址（{@link NetUtil#lanIp()}）
-   * @param port  后端端口（便携包默认 9180）
-   */
+  /** 扫一遍当前网段。返回**排序后的**结果（地址小的在前，界面顺序稳定）。 */
   public static List<Found> scan(String ownIp, int port, Progress progress) {
-    return scan(ownIp, prefixLengthOf(ownIp), port, DEFAULT_TIMEOUT_MS, DEFAULT_THREADS, progress);
+    return scan(ownIp, prefixLengthOf(ownIp), new int[] {port}, DEFAULT_TIMEOUT_MS, DEFAULT_THREADS,
+        progress);
   }
 
-  /** 供单测/调参用的完整版本。 */
+  /**
+   * 要扫哪些端口：**永远先扫便携包默认端口**，再加上历史记录里用过的端口（去重、最多 2 个）。
+   *
+   * <p>⛔ 2026-10-03 踩过的坑：原来只扫"历史记录里第一条的端口"，用户换过端口（比如早期用
+   * 5173 开发端口连过）时就会去扫一个根本没在听的端口 → 永远找不到电脑。默认端口必须无条件包含。
+   */
+  public static int[] portsToScan(int historyPort) {
+    if (historyPort <= 0 || historyPort == DEFAULT_PORT_VALUE) {
+      return new int[] {DEFAULT_PORT_VALUE};
+    }
+    return new int[] {DEFAULT_PORT_VALUE, historyPort};
+  }
+
+  /** 便携包默认端口（后端与网页同一个端口） */
+  public static final int DEFAULT_PORT_VALUE = 9180;
+
+  /** 多端口 + 默认超时/线程数（界面用的就是这个） */
+  public static List<Found> scan(String ownIp, int prefixLength, int[] ports, Progress progress) {
+    return scan(ownIp, prefixLength, ports, DEFAULT_TIMEOUT_MS, DEFAULT_THREADS, progress);
+  }
+
+  /** 供单测/调参用的完整版本（单端口）。 */
   public static List<Found> scan(String ownIp, int prefixLength, int port, int timeoutMs,
+                                 int threads, Progress progress) {
+    return scan(ownIp, prefixLength, new int[] {port}, timeoutMs, threads, progress);
+  }
+
+  /** 完整版本：多个端口各扫一遍，结果合并去重。 */
+  public static List<Found> scan(String ownIp, int prefixLength, int[] ports, int timeoutMs,
                                  int threads, Progress progress) {
     List<String> hosts = candidates(ownIp, prefixLength);
     List<Found> found = Collections.synchronizedList(new ArrayList<Found>());
-    if (hosts.isEmpty()) {
+    if (hosts.isEmpty() || ports == null || ports.length == 0) {
       return found;
     }
 
+    final int total = hosts.size() * ports.length;
+    final int[] done = {0};
     ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, threads));
     List<Future<?>> tasks = new ArrayList<>();
-    final int[] done = {0};
-    final int total = hosts.size();
-    for (final String host : hosts) {
-      tasks.add(pool.submit(new Callable<Void>() {
-        @Override
-        public Void call() {
-          if (probe(host, port, timeoutMs)) {
-            found.add(new Found(host, port));
+    for (final int port : ports) {
+      for (final String host : hosts) {
+        tasks.add(pool.submit(new Callable<Void>() {
+          @Override
+          public Void call() {
+            if (probe(host, port, timeoutMs)) {
+              found.add(new Found(host, port));
+            }
+            int finished;
+            synchronized (done) {
+              done[0]++;
+              finished = done[0];
+            }
+            if (progress != null) {
+              progress.onProgress(finished, total);
+            }
+            return null;
           }
-          int finished;
-          synchronized (done) {
-            done[0]++;
-            finished = done[0];
-          }
-          if (progress != null) {
-            progress.onProgress(finished, total);
-          }
-          return null;
-        }
-      }));
+        }));
+      }
     }
 
     pool.shutdown();
@@ -212,7 +237,8 @@ public final class ServerDiscovery {
     Collections.sort(sorted, (left, right) -> {
       long a = ipToLong(left.host);
       long b = ipToLong(right.host);
-      return Long.compare(a, b);
+      int byAddress = Long.compare(a, b);
+      return byAddress != 0 ? byAddress : Integer.compare(left.port, right.port);
     });
     return sorted;
   }

@@ -40,6 +40,29 @@ public class NetworkStateTest {
   }
 
   @Test
+  public void lanAddressDecidesReachabilityNotTheActiveNetwork() {
+    // ⛔ 2026-10-03 踩过的坑：手机自己开热点时"活动网络"是移动数据（手机走蜂窝上网），
+    //    只有 WiFi transport 才算局域网 → 那样会被误判成"流量连不上"，App 拒绝扫描。
+    //    正确判据是"有没有站点本地地址"。
+    assertEquals(NetworkState.Kind.HOTSPOT,
+        NetworkState.classify(false, false, true, "192.168.43.1"));  // 蜂窝在线 + 自己在开热点
+    assertEquals(NetworkState.Kind.WIFI,
+        NetworkState.classify(false, false, true, "192.168.43.240")); // 别人的热点里当客户端
+    assertEquals(NetworkState.Kind.CELLULAR,
+        NetworkState.classify(false, false, true, null));             // 纯流量：真的连不上
+    assertEquals(NetworkState.Kind.NONE,
+        NetworkState.classify(false, false, false, ""));
+    assertTrue(NetworkState.canReachComputer(NetworkState.Kind.HOTSPOT));
+    assertTrue(NetworkState.canReachComputer(NetworkState.Kind.WIFI));
+  }
+
+  @Test
+  public void windowsHotspotGatewayIsRecognisedToo() {
+    // 电脑开移动热点、手机当客户端时，网关是 192.168.137.1
+    assertTrue(NetworkState.looksLikeHotspotGateway("192.168.137.1"));
+  }
+
+  @Test
   public void hotspotGatewayAddressesAreRecognised() {
     assertTrue(NetworkState.looksLikeHotspotGateway("192.168.43.1"));
     assertTrue(NetworkState.looksLikeHotspotGateway("192.168.42.1"));
@@ -48,5 +71,8 @@ public class NetworkStateTest {
     assertFalse(NetworkState.looksLikeHotspotGateway("192.168.43.240"));
     assertFalse(NetworkState.looksLikeHotspotGateway("192.168.1.5"));
     assertFalse(NetworkState.looksLikeHotspotGateway(null));
+    // ⛔ 前缀匹配会误判：192.168.43.15 也以 "192.168.43.1" 开头，必须按完整地址比
+    assertFalse(NetworkState.looksLikeHotspotGateway("192.168.43.15"));
+    assertFalse(NetworkState.looksLikeHotspotGateway("192.168.43.100"));
   }
 }

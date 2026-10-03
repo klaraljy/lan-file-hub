@@ -188,18 +188,18 @@ public class ConnectActivity extends Activity {
       return;
     }
     NetworkState.Kind kind = NetworkState.detect(this);
-    if (!NetworkState.canReachComputer(kind)) {
-      // 流量下扫也没用（电脑不在移动网络里），直接说清楚，别让用户白等
+    // ⛔ 判据是"有没有局域网地址"，不是"当前活动网络是不是 WiFi"：
+    //    手机自己开热点时活动网络是移动数据，只看它就会误判成"流量连不上"而拒绝扫描
+    //    （2026-10-03 用户实测："找电脑"点了没反应 → 就是这个原因）。
+    final String ownIp = NetUtil.lanIp();
+    if (ownIp == null || ownIp.isEmpty() || !NetworkState.canReachComputer(kind)) {
+      // 真的没有局域网地址（纯流量）：扫也没用，直接说清楚，别让用户白等
       searchView.setText(R.string.connect_search_no_lan);
       return;
     }
-    final String ownIp = NetUtil.lanIp();
-    if (ownIp == null) {
-      searchView.setText(R.string.connect_search_no_ip);
-      return;
-    }
-    final int port = ServerStore.defaultPort(this);
-    final String scanKey = ownIp + ":" + port;
+    // 扫的端口：便携包默认端口 + 历史里用过的端口（用户以前连过别的端口时也要能找到）
+    final int[] ports = ServerDiscovery.portsToScan(ServerStore.defaultPort(this));
+    final String scanKey = ownIp + ":" + ports[0] + (ports.length > 1 ? ("," + ports[1]) : "");
     if (!manual && scanKey.equals(autoScannedFor)) {
       return;  // 这个网络这次已经扫过了
     }
@@ -209,10 +209,12 @@ public class ConnectActivity extends Activity {
 
     discoverExecutor.execute(
         () -> {
+          final int prefixLength = ServerDiscovery.prefixLengthOf(ownIp);
           List<ServerDiscovery.Found> found =
               ServerDiscovery.scan(
                   ownIp,
-                  port,
+                  prefixLength,
+                  ports,
                   (done, total) ->
                       handler.post(
                           () -> searchView.setText(getString(R.string.connect_searching, done, total))));
@@ -232,6 +234,8 @@ public class ConnectActivity extends Activity {
             }
           }
           final boolean changed = added;
+          final String scanRange = ownIp.substring(0, ownIp.lastIndexOf('.') + 1) + "1~254";
+          final String portsText = ports.length > 1 ? (ports[0] + "、" + ports[1]) : String.valueOf(ports[0]);
           handler.post(
               () -> {
                 discovering = false;
@@ -241,10 +245,13 @@ public class ConnectActivity extends Activity {
                 if (!found.isEmpty()) {
                   searchView.setText(getString(R.string.connect_found, found.size()));
                 } else {
+                  // 把"扫了什么"也说清楚：用户能据此判断是不是网络问题（AGENTS §14.1）
                   searchView.setText(
-                      kind == NetworkState.Kind.HOTSPOT
-                          ? getString(R.string.connect_not_found_hotspot)
-                          : getString(R.string.connect_not_found_wifi));
+                      (kind == NetworkState.Kind.HOTSPOT
+                              ? getString(R.string.connect_not_found_hotspot)
+                              : getString(R.string.connect_not_found_wifi))
+                          + "\n"
+                          + getString(R.string.connect_search_scope, ownIp, scanRange, portsText));
                 }
                 probeAll();
               });

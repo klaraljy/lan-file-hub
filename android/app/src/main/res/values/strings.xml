@@ -25,9 +25,10 @@
   <string name="connect_found">发现 %1$d 台电脑 —— 点一下就能用。</string>
   <string name="connect_not_found_wifi">没找到电脑。请确认：① 电脑上的程序已经启动；② 手机和电脑连的是同一个 WiFi。\n如果都正常还是找不到，多半是这个 WiFi 开了「客户端隔离」（校园网、公司网常见）—— 这时候请让电脑连你的手机热点，再点「找电脑」。</string>
   <string name="connect_not_found_hotspot">没找到电脑。请确认电脑上的程序已经启动，并且电脑连的是你这台手机的热点。</string>
-  <string name="connect_search_no_lan">你现在用的是移动数据（流量），电脑不在这个网络里，连不上。请连上电脑所在的 WiFi，或让电脑连你的手机热点。</string>
-  <string name="connect_search_no_ip">手机没有拿到局域网地址，先连上 WiFi 或打开手机热点再试。</string>
+  <string name="connect_search_no_lan">手机现在没有连上任何局域网：请连上电脑所在的 WiFi，或打开手机热点并让电脑连上来（用流量是连不到电脑的）。</string>
+  <string name="connect_search_no_ip">手机还没拿到局域网地址（如果刚开热点，等几秒再点一次「找电脑」）。</string>
   <string name="connect_discovered_label">自动发现</string>
+  <string name="connect_search_scope">（已扫过 %2$s 的 %3$s 端口；本机地址 %1$s）</string>
 
   <string name="connect_online">在线 · 点一下就能用</string>
   <string name="connect_offline">离线 · 电脑没开，或它换了网络（地址会变，长按这条可以改）</string>
