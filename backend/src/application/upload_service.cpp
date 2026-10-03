@@ -13,6 +13,25 @@
 namespace lan_file_hub {
 namespace {
 
+// 同名文件自动改名：`报告.pdf` → `报告 (1).pdf` → `报告 (2).pdf` …
+//
+// 用户 2026-10-03 明确要求（"相同名字的文件加一个 (1)，再多一个变成 (2)"）：
+// 撞名不该报错，也不该弹框问，直接排下去就行 —— 这才是他用文件管理器的预期。
+// 后缀插在扩展名之前；名字有长度上限，超长时截断基名（扩展名与后缀保留）。
+std::string SuffixedName(const std::string& original, int index) {
+  constexpr std::size_t kMaxNameLength = 200;
+  const std::size_t dot = original.find_last_of('.');
+  const bool has_extension = dot != std::string::npos && dot > 0;
+  const std::string base = has_extension ? original.substr(0, dot) : original;
+  const std::string extension = has_extension ? original.substr(dot) : std::string();
+  const std::string suffix = " (" + std::to_string(index) + ")" + extension;
+  if (base.size() + suffix.size() <= kMaxNameLength) {
+    return base + suffix;
+  }
+  const std::size_t room = kMaxNameLength > suffix.size() ? kMaxNameLength - suffix.size() : 1;
+  return base.substr(0, room) + suffix;
+}
+
 Error UploadNotFound() {
   return Error{"UPLOAD_NOT_FOUND", "上传会话不存在"};
 }
@@ -334,15 +353,28 @@ Result<UploadStatusView> UploadService::CreateSession(const Actor& actor,
     return Error{"STORAGE_BUSY", "你的并发上传任务已达上限，请先完成或取消其他上传"};
   }
 
-  // 同名冲突提前拦住：等传完几十 GB 才说重名太糟糕了。
-  // 新增版本时文件名不变，不做这个检查。
+  // 同名不报错，**自动加 (1)、(2)…**（用户 2026-10-03 明确要求：
+  // "你为什么就不能用相同名字的文件加一个 (1) 呢，再多一个变成 (2) 呢"）。
+  // 只对新文件做；"新增版本"时文件名本来就不变，不参与改名。
+  std::string effective_name = name.Value();
   if (!target_file.has_value()) {
-    auto duplicated = files_.ExistsWithName(target.id, name.Value());
-    if (!duplicated) {
-      return duplicated.GetError();
-    }
-    if (duplicated.Value()) {
-      return Error{"RESOURCE_CONFLICT", "同一目录下已存在同名文件"};
+    for (int index = 1; index <= 50; ++index) {
+      auto exists = files_.ExistsWithName(target.id, effective_name);
+      if (!exists) {
+        return exists.GetError();
+      }
+      // 也要避开"正在传的那个"：连着建多个会话时不能都拿到 (1)（实测踩到）
+      auto pending = sessions_.ExistsPendingName(target.id, effective_name);
+      if (!pending) {
+        return pending.GetError();
+      }
+      if (!exists.Value() && !pending.Value()) {
+        break;  // 这个名字空着，就用它
+      }
+      if (index == 50) {
+        return Error{"RESOURCE_CONFLICT", "同名文件太多（已经排到 (50)），先整理一下这个文件夹吧"};
+      }
+      effective_name = SuffixedName(name.Value(), index);
     }
   }
 
@@ -352,7 +384,7 @@ Result<UploadStatusView> UploadService::CreateSession(const Actor& actor,
   // 文件最终归属目录所有者，在 Complete 里按目录解析，不能用这里的值。
   session.user_id = actor.user_id;
   session.folder_id = target.id;
-  session.file_name = name.Value();
+  session.file_name = effective_name;
   session.mime_type = SanitizeMimeType(request.mime_type);
   session.total_size = request.total_size;
   session.chunk_size = chunk_size;

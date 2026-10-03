@@ -398,6 +398,28 @@ Result<std::uint64_t> UploadSessionRepository::CountInProgressByUser(std::string
   }
 }
 
+Result<bool> UploadSessionRepository::ExistsPendingName(std::string_view folder_id,
+                                                       std::string_view file_name) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(folder_id));
+    params.append(std::string(file_name));
+    const pqxx::result rows = tx.exec(
+        "SELECT 1 FROM upload_sessions WHERE folder_id = $1::uuid AND file_name = $2 "
+        "AND status IN ('INITIATED', 'UPLOADING') AND expires_at > now() LIMIT 1",
+        params);
+    tx.commit();
+    return !rows.empty();
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "检查同名上传会话失败");
+  }
+}
+
 Result<std::uint64_t> UploadSessionRepository::CountInProgressGlobal() {
   auto lease = pool_.Acquire();
   if (!lease) {

@@ -60,6 +60,12 @@ class UploadSessionRepository {
   [[nodiscard]] Result<std::uint64_t> CountInProgressByUser(std::string_view user_id);
   [[nodiscard]] Result<std::uint64_t> CountInProgressGlobal();
 
+  /** 该目录里是否已有**还没结束**的同名上传会话。
+   *  自动改名（同名加 (1)、(2)…）时必须连"正在传的那个"一起避开，
+   *  否则连着建三次会话会都拿到 (1)（2026-10-03 实测踩到）。 */
+  [[nodiscard]] Result<bool> ExistsPendingName(std::string_view folder_id,
+                                               std::string_view file_name);
+
   [[nodiscard]] Status DeleteChunks(std::string_view session_id);
 
   [[nodiscard]] Status DeleteSession(std::string_view session_id);
