@@ -35,6 +35,7 @@ import {
   EditOutlined,
   EyeOutlined,
   FileOutlined,
+  FolderOpenOutlined,
   FolderOutlined,
   HistoryOutlined,
   InfoCircleOutlined,
@@ -366,6 +367,16 @@ export function FilesPage() {
         }
         return (
           <Space wrap size={0}>
+            {/* 「打开」放最前面：进文件夹是查看结构/往里加文件的唯一入口，不能只靠点名字
+                （2026-10-03 用户反馈"我不可以去查看文件结构的吗"） */}
+            <Button
+              type="primary"
+              size="small"
+              icon={<FolderOpenOutlined />}
+              onClick={() => navigate(`/files/${row.folder.id}`)}
+            >
+              打开
+            </Button>
             <Button
               type="link"
               size="small"
@@ -580,7 +591,9 @@ export function FilesPage() {
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
-                  keyword.trim() ? '当前页没有匹配的名称' : '这个文件夹是空的，点击「上传文件」开始'
+                  keyword.trim()
+                    ? '当前页没有匹配的名称'
+                    : '这个文件夹还是空的：把文件拖到上面的上传区，或点「选择文件夹上传」'
                 }
               />
             ),
