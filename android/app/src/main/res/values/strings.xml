@@ -55,4 +55,38 @@
   <string name="web_reload_glyph">⟳</string>
   <string name="web_external_glyph">🌐</string>
   <string name="web_close_glyph">✕</string>
+
+  <!-- 相册备份（2026-10-03 用户批准的功能） -->
+  <string name="backup_title">相册备份</string>
+  <string name="backup_entry_button">相册备份（把手机照片存到电脑）</string>
+  <string name="backup_not_connected">还没连电脑。先回上一页点「找电脑」连一次，再回到这里登录。</string>
+  <string name="backup_target">备份到：%1$s:%2$s　账号：%3$s</string>
+  <string name="backup_login_button">登录 / 换账号</string>
+  <string name="backup_login_title">登录电脑上的账号</string>
+  <string name="backup_login_message">用电脑上那个账号登录一次，令牌只存在这台手机上（不保存口令）。\n照片会传到电脑上的「手机相册」文件夹里。</string>
+  <string name="backup_login_user_hint">用户名或邮箱</string>
+  <string name="backup_login_password_hint">口令</string>
+  <string name="backup_login_confirm">登录</string>
+  <string name="backup_login_empty">用户名和口令都要填</string>
+  <string name="backup_login_working">正在登录…</string>
+  <string name="backup_login_ok">已登录（%1$s），可以备份了</string>
+  <string name="backup_login_failed">登录失败：%1$s</string>
+  <string name="backup_need_server_title">还没有连过电脑</string>
+  <string name="backup_need_server_message">先在「连接电脑」页找到电脑并点进网页登录一次，回来这里就能备份了。</string>
+  <string name="backup_goto_connect">去连接电脑</string>
+  <string name="backup_choose_hint">要备份哪些相册？</string>
+  <string name="backup_choose_button">选择相册</string>
+  <string name="backup_choose_title">选择要备份的相册</string>
+  <string name="backup_choose_confirm">保存</string>
+  <string name="backup_bucket_summary">已选 %1$d 个相册（传过的照片不会重复传）</string>
+  <string name="backup_no_buckets">没读到相册。请先允许「照片和媒体」权限，再回来看看。</string>
+  <string name="backup_no_buckets_toast">没读到相册，先给 App 「照片和媒体」权限</string>
+  <string name="backup_permission_denied">没有相册权限就没法备份。到系统设置里给这个 App 「照片和媒体」权限即可。</string>
+  <string name="backup_pick_bucket_first">先选一个相册，再点开始备份</string>
+  <string name="backup_wifi_only">只在 WiFi / 热点下备份</string>
+  <string name="backup_wifi_hint">用手机流量时不会传（省流量）；传一半切走网络会自动停下，已经传好的不会重来。</string>
+  <string name="backup_start">开始备份</string>
+  <string name="backup_stop">停止</string>
+  <string name="backup_idle">准备就绪</string>
+  <string name="backup_footer">照片会存到电脑上「我的文件 → 手机相册」里；电脑上没开程序、或手机和电脑不在同一个网络时传不了，页面会写明原因。</string>
 </resources>

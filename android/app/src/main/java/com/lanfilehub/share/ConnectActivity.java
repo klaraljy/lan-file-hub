@@ -86,6 +86,9 @@ public class ConnectActivity extends Activity {
     findViewById(R.id.find_server).setOnClickListener(view -> startDiscovery(true));
     findViewById(R.id.open_share).setOnClickListener(
         view -> startActivity(new Intent(this, MainActivity.class)));
+    // 相册备份（2026-10-03）：把手机照片存到电脑上
+    findViewById(R.id.open_backup).setOnClickListener(
+        view -> startActivity(new Intent(this, BackupActivity.class)));
   }
 
   @Override

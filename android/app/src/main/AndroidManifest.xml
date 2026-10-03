@@ -15,6 +15,15 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!--
+    相册备份（2026-10-03）：读手机里的照片。Android 13+ 用 READ_MEDIA_IMAGES，
+    12 及以下用 READ_EXTERNAL_STORAGE（用 maxSdkVersion 限定，避免在新系统上多要权限）。
+    ⛔ 刻意**不申请定位权限**：本 App 不需要知道 WiFi 名字（用户 2026-10-03 明确选择）。
+  -->
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+  <uses-permission
+      android:name="android.permission.READ_EXTERNAL_STORAGE"
+      android:maxSdkVersion="32" />
 
   <application
       android:allowBackup="false"
@@ -47,9 +56,21 @@
         android:exported="false"
         android:label="@string/app_name" />
 
+    <!-- 相册备份（2026-10-03）：把手机照片传到电脑的「手机相册」文件夹 -->
+    <activity
+        android:name=".BackupActivity"
+        android:exported="false"
+        android:label="@string/backup_title" />
+
     <!-- 前台服务：只负责让进程活着（分享中不被系统回收），HTTP 服务在进程内的单例里跑 -->
     <service
         android:name=".ShareService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
+
+    <!-- 前台服务：相册备份的进度提示 + 让进程活着（备份几百张照片时要跑很久） -->
+    <service
+        android:name=".BackupService"
         android:exported="false"
         android:foregroundServiceType="dataSync" />
   </application>
