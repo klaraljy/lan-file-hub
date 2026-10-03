@@ -329,9 +329,58 @@ public class BackupActivity extends Activity {
       showBucketDialog();
       return;
     }
-    // 前台服务：切到后台/锁屏也不至于被系统立刻回收
-    startForegroundService(new Intent(this, BackupService.class));
-    BackupController.get(this).start();
+    // 先算清楚"要传多少张、多大"，再让用户确认（用户 2026-10-03 明确要求：
+    // "这个应该是可选择性传输的吧，你不会点一下就全备份了吧"）。
+    // 统计要读 MediaStore，放后台线程，别卡界面。
+    statusView.setText(R.string.backup_calculating);
+    executor.execute(
+        () -> {
+          BackupPlanner.Summary summary = BackupController.preview(this);
+          boolean uploadable = BackupController.canUploadNow(this);
+          handler.post(() -> confirmAndStart(summary, uploadable));
+        });
+  }
+
+  /** 确认框：把"将上传多少"摆在明面上，用户按「开始备份」才真的传。 */
+  private void confirmAndStart(BackupPlanner.Summary summary, boolean uploadable) {
+    if (summary.isEmpty()) {
+      statusView.setText(R.string.backup_nothing_new);
+      toast(R.string.backup_nothing_new);
+      return;
+    }
+    String sizeText = formatSize(summary.totalBytes);
+    StringBuilder message = new StringBuilder();
+    message.append(getString(R.string.backup_confirm_message, summary.count, sizeText));
+    if (!uploadable) {
+      message.append("\n\n").append(getString(R.string.backup_confirm_not_wifi));
+    }
+    statusView.setText(getString(R.string.backup_idle));
+    new AlertDialog.Builder(this)
+        .setTitle(R.string.backup_confirm_title)
+        .setMessage(message.toString())
+        .setNegativeButton(R.string.connect_cancel, null)
+        .setPositiveButton(
+            R.string.backup_confirm_start,
+            (dialog, which) -> {
+              // 前台服务：切到后台/锁屏也不至于被系统立刻回收
+              startForegroundService(new Intent(this, BackupService.class));
+              BackupController.get(this).start();
+            })
+        .show();
+  }
+
+  /** 把字节数说成人话（KB / MB / GB） */
+  private static String formatSize(long bytes) {
+    if (bytes < 1024) {
+      return bytes + " B";
+    }
+    if (bytes < 1024L * 1024L) {
+      return Math.round(bytes / 1024.0) + " KB";
+    }
+    if (bytes < 1024L * 1024L * 1024L) {
+      return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024.0);
+    }
+    return String.format(java.util.Locale.ROOT, "%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
   }
 
   private void toast(int stringRes) {

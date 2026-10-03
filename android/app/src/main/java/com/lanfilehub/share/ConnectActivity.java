@@ -98,6 +98,7 @@ public class ConnectActivity extends Activity {
     handler.removeCallbacks(refreshTask);
     handler.post(refreshTask);
     updateNetworkLine();
+    showVersion();
   }
 
   @Override
@@ -118,6 +119,25 @@ public class ConnectActivity extends Activity {
     NetworkState.Kind kind = NetworkState.detect(this);
     networkView.setText(getString(R.string.connect_network_label, networkLabel(kind)));
     networkView.setTextColor(NetworkState.canReachComputer(kind) ? 0xFF1F9D55 : 0xFFB45309);
+  }
+
+  /**
+   * 底部那行"版本 + 构建号"（2026-10-03 用户要求：覆盖安装时能一眼分辨新旧）。
+   *
+   * <p>构建号由 `scripts\build-android.ps1` 每次出包自增，网页「我的」里的下载卡片显示同一个号，
+   * 所以"手机上装的是不是最新"两处一对就知道。
+   */
+  private void showVersion() {
+    TextView versionView = findViewById(R.id.app_version);
+    try {
+      android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+      long code = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P
+          ? info.getLongVersionCode()
+          : info.versionCode;
+      versionView.setText(getString(R.string.connect_version_line, info.versionName, code));
+    } catch (android.content.pm.PackageManager.NameNotFoundException missing) {
+      versionView.setText("");
+    }
   }
 
   private String networkLabel(NetworkState.Kind kind) {

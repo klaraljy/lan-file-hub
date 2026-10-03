@@ -84,6 +84,38 @@ public final class BackupController {
     return worker != null && worker.isAlive();
   }
 
+  /**
+   * 收集"还没备份过"的照片（选中的相册 × 本地清单）。
+   *
+   * <p>⛔ 预览与实际备份**必须用同一个方法**：用户看到的"将上传 128 张"要是真实清单，
+   * 不能预览一套、实际传另一套（那正是用户担心的"点一下就全备份了"）。
+   */
+  public static List<BackupPlanner.Photo> collectPending(Context context) {
+    Set<String> buckets = BackupStore.buckets(context);
+    List<BackupPlanner.Photo> pending = new ArrayList<>();
+    if (buckets.isEmpty()) {
+      return pending;
+    }
+    Set<String> backedUp = BackupStore.backedUpKeys(context);
+    for (String bucket : buckets) {
+      pending.addAll(BackupPlanner.pending(MediaScanner.photos(context, bucket), backedUp));
+    }
+    return pending;
+  }
+
+  /** 开工前的预览（数量 + 体积 + 现在能不能传），供界面弹确认框用 */
+  public static BackupPlanner.Summary preview(Context context) {
+    return BackupPlanner.summarize(collectPending(context));
+  }
+
+  /** 现在能不能传（仅 WiFi 设置 + 当前网络） */
+  public static boolean canUploadNow(Context context) {
+    if (!BackupStore.wifiOnly(context)) {
+      return true;
+    }
+    return NetworkState.canReachComputer(NetworkState.detect(context));
+  }
+
   /** 开始备份（已在跑就忽略）。scan 在后台线程里做，界面不会卡。 */
   public void start() {
     if (isRunning()) {
@@ -129,12 +161,8 @@ public final class BackupController {
         return;
       }
 
-      // 1) 收集待备份清单（本地清单里没有的）
-      List<BackupPlanner.Photo> pending = new ArrayList<>();
-      Set<String> backedUp = BackupStore.backedUpKeys(appContext);
-      for (String bucket : buckets) {
-        pending.addAll(BackupPlanner.pending(MediaScanner.photos(appContext, bucket), backedUp));
-      }
+      // 1) 收集待备份清单（与预览用的是同一个方法，用户看到多少就传多少）
+      List<BackupPlanner.Photo> pending = collectPending(appContext);
       if (pending.isEmpty()) {
         finish("没有新照片要备份（都传过了）");
         return;

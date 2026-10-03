@@ -20,7 +20,8 @@ param(
   [switch]$SkipTests,
   [switch]$UseProxy,
   [switch]$PublishOnly,
-  [switch]$SkipPublish
+  [switch]$SkipPublish,
+  [switch]$NoVersionBump
 )
 
 $ErrorActionPreference = 'Continue'
@@ -42,6 +43,27 @@ function Get-GradleVersion([string]$Key, [string]$Default) {
   $match = Select-String -Path $gradleFile -Pattern ($Key + '\s+(\d+)') | Select-Object -First 1
   if ($match) { return $match.Matches[0].Groups[1].Value }
   return $Default
+}
+
+# 「构建号」自增（2026-10-03 用户要求"加固覆盖安装"）：
+# 每次出包把 versionCode +1，用户就能一眼分辨手机上装的是不是最新那一版
+#（App 首页显示"版本 x（构建号 n）"，网页下载卡片上显示同一个号）。
+# -NoVersionBump 可以只重出同一个号（调试用）。
+function Step-VersionCode {
+  param([switch]$Skip)
+  $gradleFile = Join-Path $AndroidDir 'app\build.gradle'
+  if ($Skip -or -not (Test-Path $gradleFile)) {
+    return [int](Get-GradleVersion 'versionCode' '1')
+  }
+  $current = [int](Get-GradleVersion 'versionCode' '1')
+  $next = $current + 1
+  $text = [System.IO.File]::ReadAllText($gradleFile, (New-Object System.Text.UTF8Encoding($false)))
+  $updated = [regex]::Replace($text, 'versionCode\s+\d+', ('versionCode ' + $next), 1)
+  if ($updated -ne $text) {
+    [System.IO.File]::WriteAllText($gradleFile, $updated, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host ('  构建号：' + $current + ' → ' + $next) -ForegroundColor Gray
+  }
+  return $next
 }
 
 function Publish-Apk {
@@ -149,6 +171,9 @@ try {
                      '-Dhttps.proxyHost=127.0.0.1', '-Dhttps.proxyPort=65532')
     Write-Host '  （依赖下载走本机代理）' -ForegroundColor DarkGray
   }
+
+  # 出包前先自增构建号（-NoVersionBump 时不增）
+  $null = Step-VersionCode -Skip:$NoVersionBump
 
   if (-not $SkipTests) {
     Write-Host '==> 跑内置 HTTP 服务的单元测试' -ForegroundColor Cyan

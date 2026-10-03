@@ -58,6 +58,8 @@
   <string name="web_close_glyph">✕</string>
 
   <!-- 相册备份（2026-10-03 用户批准的功能） -->
+  <string name="connect_version_line">App 版本 %1$s（构建号 %2$d）— 和网页「我的」里显示的一致</string>
+
   <string name="backup_title">相册备份</string>
   <string name="backup_entry_button">相册备份（把手机照片存到电脑）</string>
   <string name="backup_not_connected">还没连电脑。先回上一页点「找电脑」连一次，再回到这里登录。</string>
@@ -89,5 +91,11 @@
   <string name="backup_start">开始备份</string>
   <string name="backup_stop">停止</string>
   <string name="backup_idle">准备就绪</string>
+  <string name="backup_calculating">正在统计要传多少张…</string>
+  <string name="backup_nothing_new">没有新照片要备份（都传过了）</string>
+  <string name="backup_confirm_title">确认要备份这些照片？</string>
+  <string name="backup_confirm_message">将上传 %1$d 张照片（约 %2$s）到电脑上的「手机相册」。\n\n· 传过的照片不会重复传\n· 只传你勾选的相册，别的相册不动\n· 传的过程中可以随时点「停止」</string>
+  <string name="backup_confirm_start">开始备份</string>
+  <string name="backup_confirm_not_wifi">注意：现在不是 WiFi / 热点，按「开始备份」后会立刻停下（想用流量传就先关掉「只在 WiFi 下备份」）。</string>
   <string name="backup_footer">照片会存到电脑上「我的文件 → 手机相册」里；电脑上没开程序、或手机和电脑不在同一个网络时传不了，页面会写明原因。</string>
 </resources>

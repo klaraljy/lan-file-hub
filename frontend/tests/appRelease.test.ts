@@ -44,16 +44,17 @@ describe('formatBuildTime', () => {
 });
 
 describe('describeAppRelease', () => {
-  it('版本 / 大小 / 时间拼成一行；缺什么就不显示什么', () => {
+  it('版本 / 构建号 / 大小 / 时间拼成一行；缺什么就不显示什么', () => {
     expect(
       describeAppRelease({
         ...EMPTY_APP_RELEASE,
         available: true,
         version_name: '1.0',
+        version_code: 7,
         size_bytes: 347_000,
         built_at: '2026-10-03T09:01:18Z',
       }),
-    ).toMatch(/^版本 1\.0 · 339 KB · 2026-10-0[34] \d{2}:\d{2} 构建$/);
+    ).toMatch(/^版本 1\.0 · 构建号 7 · 339 KB · 2026-10-0[34] \d{2}:\d{2} 构建$/);
 
     // 只有大小（还没写侧车文件时就是这个样子）
     expect(

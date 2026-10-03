@@ -93,6 +93,23 @@ public class BackupPlannerTest {
   }
 
   @Test
+  public void summarizeReportsCountAndSizeForTheConfirmationDialog() {
+    // 用户要求：点「开始备份」前先告诉他「将上传 N 张、约 X MB」（不会点一下就全备份）
+    java.util.List<BackupPlanner.Photo> pending = Arrays.asList(
+        photo("Camera", "a.jpg", 100, 1), photo("Camera", "b.jpg", 200, 2),
+        photo("WeChat", "c.jpg", 300, 3));
+    BackupPlanner.Summary summary = BackupPlanner.summarize(pending);
+    assertEquals(3, summary.count);
+    assertEquals(600L, summary.totalBytes);
+    assertFalse(summary.isEmpty());
+
+    assertTrue(BackupPlanner.summarize(null).isEmpty());
+    assertEquals(0, BackupPlanner.summarize(null).count);
+    assertEquals(0L, BackupPlanner.summarize(null).totalBytes);
+    assertTrue(BackupPlanner.summarize(Collections.<BackupPlanner.Photo>emptyList()).isEmpty());
+  }
+
+  @Test
   public void nullInputsAreHandledInsteadOfCrashing() {
     assertTrue(BackupPlanner.pending(null, null).isEmpty());
     assertTrue(BackupPlanner.pending(Collections.<BackupPlanner.Photo>emptyList(), null).isEmpty());

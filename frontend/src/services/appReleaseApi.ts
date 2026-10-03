@@ -80,10 +80,13 @@ export function formatBuildTime(iso: string): string {
   );
 }
 
-/** 卡片上那行"版本 · 大小 · 时间"（缺什么就少显示什么，不出现空占位） */
+/** 卡片上那行"版本 · 构建号 · 大小 · 时间"（缺什么就少显示什么，不出现空占位） */
 export function describeAppRelease(info: AppReleaseInfo): string {
   const parts: string[] = [];
   if (info.version_name) parts.push(`版本 ${info.version_name}`);
+  // 构建号（2026-10-03）：每次出包 +1，手机上 App 首页显示同一个号，
+  // 用户据此判断"手机上装的是不是最新"（覆盖安装是否生效）。
+  if (info.version_code > 0) parts.push(`构建号 ${info.version_code}`);
   const size = formatSize(info.size_bytes);
   if (size) parts.push(size);
   const built = formatBuildTime(info.built_at);

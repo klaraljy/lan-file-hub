@@ -119,4 +119,36 @@ public final class BackupPlanner {
   public static String progressText(int index, int total) {
     return "正在备份 " + (index + 1) + "/" + total;
   }
+
+  /**
+   * 待备份清单的概要（2026-10-03 用户要求：点「开始备份」前先告诉他"要传多少张"）。
+   *
+   * <p>为什么必须有：用户原话"这个应该是可选择性传输的吧，你不会点一下就全备份了吧" ——
+   * 备份几百张照片是**不可逆的占用**（服务器会存下来），开工前必须让用户看一眼数量与体积。
+   */
+  public static final class Summary {
+    public final int count;
+    public final long totalBytes;
+
+    public Summary(int count, long totalBytes) {
+      this.count = count;
+      this.totalBytes = totalBytes;
+    }
+
+    public boolean isEmpty() {
+      return count <= 0;
+    }
+  }
+
+  /** 统计待备份的数量与总字节数（纯函数，单测覆盖） */
+  public static Summary summarize(List<Photo> pending) {
+    if (pending == null || pending.isEmpty()) {
+      return new Summary(0, 0L);
+    }
+    long bytes = 0;
+    for (Photo photo : pending) {
+      bytes += Math.max(0L, photo.sizeBytes);
+    }
+    return new Summary(pending.size(), bytes);
+  }
 }
