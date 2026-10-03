@@ -16,7 +16,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, App as AntApp, Button, Card, Progress, Space, Tag, Tooltip, Typography, Upload } from 'antd';
 import {
   CloudUploadOutlined,
-  FolderAddOutlined,
   PauseOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -127,8 +126,11 @@ function DesktopUploadPanel({
    * 上传一个文件夹：先算计划 → 让用户确认 → 逐级建目录 → 分文件传进对应目录。
    *
    * ⛔ 先确认再传：用户明确问过"你不会点一下就全备份了吧"，几十上百个文件不能默默传走。
+   * ⛔ 确认框**必须立刻关掉**：`manager.enqueue` 要等所有文件传完才 resolve，
+   *    onOk 里 await 它会让弹窗一直挂在屏幕上（2026-10-03 用户实测反馈"点击确认后怎么不会自动消除"）。
+   *    所以这里只把活**启动**起来，进度交给上传统计面板。
    */
-  async function handleFolderFiles(fileList: File[]) {
+  function handleFolderFiles(fileList: File[]) {
     if (!folderId || fileList.length === 0) {
       message.warning('这个文件夹里没有可上传的文件');
       return;
@@ -161,44 +163,52 @@ function DesktopUploadPanel({
       ),
       okText: '开始上传',
       cancelText: '取消',
-      onOk: async () => {
-        setFolderBusy(true);
-        try {
-          // ① 建目录：按浅 → 深，父目录一定先存在
-          const folderIds = new Map<string, string>();  // 相对目录路径 → 服务器目录 id
-          for (const dirPath of plan.directories) {
-            const slash = dirPath.lastIndexOf('/');
-            const parentPath = slash < 0 ? '' : dirPath.slice(0, slash);
-            const parentId = parentPath === '' ? folderId : folderIds.get(parentPath);
-            if (!parentId) {
-              continue;  // 父目录没建成功（上面已提示），跳过这一支
-            }
-            const created = await ensureChildFolder(parentId, dirPath.slice(slash + 1));
-            if (created) folderIds.set(dirPath, created);
-          }
-
-          // ② 按目标目录分组上传（一组一次 enqueue，任务面板里能看到进度）
-          const byFolder = new Map<string, File[]>();
-          for (const item of plan.files) {
-            const target = item.dirPath === '' ? folderId : folderIds.get(item.dirPath);
-            if (!target) continue;
-            const list = byFolder.get(target) ?? [];
-            list.push(item.file);
-            byFolder.set(target, list);
-          }
-          for (const [target, files] of byFolder) {
-            await uploadTo(files, target);
-          }
-          message.success(`已加入上传队列：${summary.files} 个文件`);
-        } catch (error) {
-          message.error(
-            error instanceof Error ? error.message : '上传文件夹失败，请稍后重试',
-          );
-        } finally {
-          setFolderBusy(false);
-        }
+      // ⛔ 不要写成 async/await：不返回 Promise，antd 才会点完就关
+      onOk: () => {
+        void startFolderUpload(plan);
       },
     });
+  }
+
+  /** 真正干活的部分：建目录 → 分批入队。跑在后台，进度在“上传任务”面板里看。 */
+  async function startFolderUpload(plan: ReturnType<typeof planFolderUpload>) {
+    setFolderBusy(true);
+    try {
+      // ① 建目录：按浅 → 深，父目录一定先存在
+      const folderIds = new Map<string, string>();  // 相对目录路径 → 服务器目录 id
+      for (const dirPath of plan.directories) {
+        const slash = dirPath.lastIndexOf('/');
+        const parentPath = slash < 0 ? '' : dirPath.slice(0, slash);
+        const parentId = parentPath === '' ? folderId : folderIds.get(parentPath);
+        if (!parentId) {
+          continue;  // 父目录没建成功（下面已提示），跳过这一支
+        }
+        const created = await ensureChildFolder(parentId, dirPath.slice(slash + 1));
+        if (created) folderIds.set(dirPath, created);
+      }
+
+      // ② 按目标目录分组入队；⛔ 不 await（enqueue 要等传完），进度交给任务面板
+      const byFolder = new Map<string, File[]>();
+      for (const item of plan.files) {
+        const target = item.dirPath === '' ? folderId : folderIds.get(item.dirPath);
+        if (!target) continue;
+        const list = byFolder.get(target) ?? [];
+        list.push(item.file);
+        byFolder.set(target, list);
+      }
+      let queued = 0;
+      for (const [target, files] of byFolder) {
+        void uploadTo(files, target);
+        queued += files.length;
+      }
+      message.success(
+        `已加入上传队列：${queued} 个文件（进度看下面的「上传任务」）`,
+      );
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '上传文件夹失败，请稍后重试');
+    } finally {
+      setFolderBusy(false);
+    }
   }
 
   /** 在当前目录下找/建一个同名子目录；失败返回 null（已在界面上提示） */
@@ -252,25 +262,22 @@ function DesktopUploadPanel({
             <p className="ant-upload-hint">
               大文件自动分块（默认 8 MiB）并在网络中断后从断点继续；上传前会计算 SHA-256。
               <br />
-              要传整个文件夹（含子目录）：把文件夹拖进来，或点下面的「选择文件夹」。
+              也可以把**整个文件夹**拖进来，或
+              {/* ⛔ stopPropagation：不然点这个链接会同时弹出"选文件"对话框（antd 的拖拽区自己绑了点击） */}
+              <Typography.Link
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (disabled || !folderId || folderBusy) return;
+                  folderInputRef.current?.click();
+                }}
+              >
+                选择文件夹上传
+              </Typography.Link>
+              （会保留里面的目录结构）。
             </p>
         </Upload.Dragger>
         </div>
 
-        {/* 「上传文件夹」入口（2026-10-03 用户要求）：选一个目录，保留里面的结构 */}
-        <Space wrap>
-          <Button
-            icon={<FolderAddOutlined />}
-            disabled={disabled || !folderId || folderBusy}
-            loading={folderBusy}
-            onClick={() => folderInputRef.current?.click()}
-          >
-            选择文件夹上传
-          </Button>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            会保留原来的目录结构（同名文件夹复用、同名文件自动加 (1)）
-          </Typography.Text>
-        </Space>
         <input
           ref={folderInputRef}
           type="file"
@@ -282,7 +289,7 @@ function DesktopUploadPanel({
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = '';  // 允许连续选同一个目录两次
-            void handleFolderFiles(files);
+            handleFolderFiles(files);
           }}
         />
 
