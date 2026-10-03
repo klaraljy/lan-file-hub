@@ -432,3 +432,15 @@ QUOTA_EXCEEDED
 「谁在线」里**不含自己** → 「我的设备」显示 §14.2 的口径 → 无横向滚动 →
 在「我的 → 设置」里切换隐身开关，并断言真的发出了 `PUT /presence/visibility`（隐藏与恢复各一次，均 200）→
 再切到 1280px 宽确认桌面侧栏也有「广场」。
+
+## 10. 品牌图标（2026-10-02，用户要求放在左上角）
+
+- 源头：`frontend/public/logo.png`（256×256，3.3 KB，绿底白文件夹 + 绿色箭头），
+  由用户给的 `9ad235a1d16a27b17bf570ff856b8cd7.jpg`（1600×1600）缩放而来。
+- 用在三处，**图案一致**：① 界面左上角（桌面侧栏 26px / 手机顶栏 24px，组件见
+  `app/AppLayout.tsx` 的 `BrandLogo`）；② 浏览器标签 `frontend/public/favicon.ico`；
+  ③ 桌面快捷方式图标（`portable/favicon.ico`，由 `scripts\create-desktop-shortcut.ps1` 设置）。
+- 约束：图标尺寸写死、圆角按 size 计算，避免不同 DPI 下忽大忽小；换图标时**三处一起换**，
+  否则会出现"标签页一个图、左上角另一个图"。
+- 验收（2026-10-02 实测）：无头浏览器登录后 `img[src="/logo.png"]` 存在、
+  `naturalWidth=256`、渲染 26px 且可见；控制台零报错；`GET /logo.png → 200 image/png`。

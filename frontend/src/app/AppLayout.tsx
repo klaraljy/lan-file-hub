@@ -44,6 +44,23 @@ const ICONS: Record<NavItem['icon'], ReactNode> = {
 
 const BRAND = 'lan-file-hub';
 
+/**
+ * 品牌图标（用户 2026-10-02 要求放在左上角）：源头 `frontend/public/logo.png`，
+ * 与浏览器标签图标 `favicon.ico`、桌面快捷方式图标是同一套绿文件夹图案。
+ * 尺寸给固定值并留圆角，避免不同 DPI 下忽大忽小。
+ */
+function BrandLogo({ size }: { size: number }) {
+  return (
+    <img
+      src="/logo.png"
+      alt="lan-file-hub"
+      width={size}
+      height={size}
+      style={{ borderRadius: Math.round(size / 5), display: 'block', flex: 'none' }}
+    />
+  );
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -84,9 +101,11 @@ export function AppLayout() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 8,
               fontWeight: 600,
             }}
           >
+            <BrandLogo size={26} />
             {BRAND}
           </div>
           {menu}
@@ -107,7 +126,12 @@ export function AppLayout() {
             lineHeight: 'normal',
           }}
         >
-          {isMobile && <Typography.Text strong>{BRAND}</Typography.Text>}
+          {isMobile && (
+            <Space size={8} align="center">
+              <BrandLogo size={24} />
+              <Typography.Text strong>{BRAND}</Typography.Text>
+            </Space>
+          )}
 
           {/* lineHeight 归零：否则整组继承 AntD Header 的 64px 行高，
               加上 ellipsis 自带的 vertical-align:bottom，用户名会被顶到顶栏底部（实测踩到） */}
