@@ -128,6 +128,8 @@ int main(int /*argc*/, char** /*argv*/) {
   auto context = std::make_shared<AppContext>();
   context->pool = pool.Value();
   context->secrets = secrets;
+  // 管理端「文件存在哪」用的路径（只读展示，不含凭据）
+  context->storage_root_path = config.storage.root.string();
   context->storage = storage.Value();
   context->users = std::make_shared<UserRepository>(*context->pool);
   context->folders = std::make_shared<FolderRepository>(*context->pool);

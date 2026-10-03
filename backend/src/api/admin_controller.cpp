@@ -193,7 +193,10 @@ void AdminController::StorageStats(const drogon::HttpRequestPtr& req,
                                               {"version_count", value.version_count},
                                               {"used_bytes", value.used_bytes},
                                               {"free_bytes", value.free_bytes},
-                                              {"active_uploads", value.active_uploads}},
+                                              {"active_uploads", value.active_uploads},
+                                              // 「文件存在哪」（2026-10-03 用户提问后加的）：
+                                              // 只对 ADMIN 返回，里面只有路径、没有任何凭据
+                                              {"storage_root", context->storage_root_path}},
                                CurrentRequestId()));
 }
 

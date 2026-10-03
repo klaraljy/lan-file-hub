@@ -1177,7 +1177,6 @@ JWT 要求：
 
 
 ## 管理员接口（阶段十三）
-
 全部需要 ADMIN 角色：认证过滤器校验身份，`AdminService` 再判角色，非管理员一律 `403 FORBIDDEN`。
 响应**不含** `password_hash`、Token 或敏感配置。
 
@@ -1196,7 +1195,11 @@ GET    /api/v1/admin/audit-logs?page=&page_size=&actor_id=&action=&resource_type
 - 改状态与改配额会写审计（`admin_disable_user` / `admin_enable_user` / `admin_set_quota`）；
   **查询审计日志本身也留痕**（`admin_query_audit_logs`）。审计写入失败只记服务端日志，不回滚业务操作。
 - `GET /api/v1/admin/storage` 字段：`user_count`、`file_count`、`version_count`、`used_bytes`（按文件版本累计）、
-  `free_bytes`（对象存储所在卷可用）、`active_uploads`。
+  `free_bytes`（对象存储所在卷可用）、`active_uploads`、`storage_root`。
+  - `storage_root`（2026-10-03 用户提问后加的）是**文件对象在服务器电脑上的绝对路径**，
+    只对 ADMIN 返回（普通用户请求该接口本来就会 403）；⛔ 里面只有路径，**没有任何凭据**。
+    网页「设置 → 文件存在哪」就是显示它 —— 用户要能知道"东西到底存在哪"。
+    对象按 SHA-256 命名（`objects/<前两位>/<完整哈希>`），所以相同内容只存一份。
 
 ## 指标端点（阶段十三）
 

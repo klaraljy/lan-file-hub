@@ -29,6 +29,8 @@ export interface SystemStorageStats {
   used_bytes: number;
   free_bytes: number;
   active_uploads: number;
+  /** 文件对象根目录（仅管理员接口返回；2026-10-03 用户提问后加的） */
+  storage_root?: string;
 }
 
 export interface AuditLogEntry {

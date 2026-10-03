@@ -97,6 +97,10 @@ struct AppContext {
   // 配套手机应用的安装包信息（用户 2026-10-03）：每个请求现看磁盘，重新构建后不用重启
   std::shared_ptr<AppRelease> app_release;
 
+  // 文件对象根目录（启动时从配置读一次）：只给管理端「文件存在哪」展示用。
+  // ⛔ 这里只有路径，没有任何凭据；只对 ADMIN 返回（docs/api.md 管理员接口）。
+  std::string storage_root_path;
+
   // 需要脱敏的值（数据库口令、Redis 口令、JWT 密钥），日志与错误信息输出前必须过滤
   std::vector<std::string> secrets;
 };

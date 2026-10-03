@@ -8,17 +8,28 @@
  * 放一个点了没反应的按钮。
  */
 import { App as AntApp, Card, Descriptions, Progress, Space, Switch, Tag, Typography } from 'antd';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
+import { PhoneAppDownload } from '../components/PhoneAppDownload';
 import { formatBytes } from '../features/files/listView';
 import { useAuth } from '../features/auth/AuthContext';
 import { usePresenceHeartbeat } from '../features/presence/usePresence';
+import { adminApi } from '../services/adminApi';
 import { presenceApi } from '../services/presenceApi';
 
 export function SettingsPage() {
   const { user } = useAuth();
   const { message } = AntApp.useApp();
   const presence = usePresenceHeartbeat();
+
+  // 文件到底存在服务器电脑的哪个目录（仅管理员看得到，2026-10-03 用户提问后加的）
+  const storageLocation = useQuery({
+    queryKey: ['admin-storage-stats'],
+    queryFn: () => adminApi.storageStats(),
+    enabled: user?.role === 'ADMIN',
+    retry: false,
+    staleTime: 60_000,
+  });
 
   // 默认可见（用户要求"只要在线就默认显示"）；服务端返回的就是当前值
   const visible = presence.data?.visible ?? true;
@@ -95,10 +106,45 @@ export function SettingsPage() {
         </Space>
       </Card>
 
+      <Card title="配套手机应用（安卓）">
+        {/* 电脑上也能找到下载位置（用户 2026-10-03 要求："电脑上也要有可以下载的位置可以在设置里面弄一个"） */}
+        <PhoneAppDownload variant="full" />
+      </Card>
+
+      {user?.role === 'ADMIN' && (
+        <Card title="文件存在哪（仅管理员可见）">
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              这套服务的文件与账号数据都在这台服务器电脑的硬盘上（不是云端）：
+            </Typography.Text>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="文件内容">
+                <Typography.Text code copyable>
+                  {storageLocation.data?.storage_root ?? '（读取中…）'}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="账号与目录">
+                由服务器本机的数据库保存（便携包形态在{' '}
+                <Typography.Text code>portable\data\pg</Typography.Text>）
+              </Descriptions.Item>
+            </Descriptions>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              对象按 SHA-256 命名（同样的内容只存一份）。别手工删这些目录里的东西：
+              数据库会指向不存在的文件。要清理就用网页的删除 + 回收站；
+              要整机搬家就用便携包里的 <Typography.Text code>备份.cmd</Typography.Text> 与{' '}
+              <Typography.Text code>恢复.cmd</Typography.Text>。
+              浏览器打不开本地文件夹 —— 想直接看一眼，用托盘图标右键 →「
+              <Typography.Text strong>打开数据目录</Typography.Text>」。
+            </Typography.Text>
+          </Space>
+        </Card>
+      )}
+
       <Card title="安全">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          当前登录凭证保存在浏览器会话存储中（关闭标签页即失效），不使用 localStorage。
-          修改密码、二次验证等设置项需要后端接口支持，将在后续阶段提供。
+          登录凭证默认只存在**浏览器会话存储**里（关掉标签页即失效）；只有你勾选「记住我」时
+          才写入 localStorage，并配 30 天长效令牌 —— 公用电脑请取消勾选，或到「我的 → 退出登录」
+          清掉本机凭证。修改密码、二次验证等设置项需要后端接口支持，将在后续阶段提供。
         </Typography.Paragraph>
       </Card>
     </Space>

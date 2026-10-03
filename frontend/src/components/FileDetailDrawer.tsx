@@ -8,6 +8,7 @@
  * 这样从列表行和从抽屉两个入口打开的是同一套弹窗，不会出现两份状态。
  */
 import { Button, Descriptions, Drawer, Space, Tag, Typography } from 'antd';
+import { FolderOpenOutlined } from '@ant-design/icons';
 import {
   HistoryOutlined,
   SendOutlined,
@@ -28,6 +29,12 @@ interface Props {
   onOpenPermissions: (file: FileMeta) => void;
   /** 「发送给…」：按人发送（AGENTS.md §14.3） */
   onOpenSend: (file: FileMeta) => void;
+  /**
+   * 文件所在文件夹的名字（空串 = 根目录）与「跳过去」回调。
+   * 用户 2026-10-03 要求："电脑端要有跳转的功能或者目录的位置"。
+   */
+  folderName?: string;
+  onOpenFolder?: (folderId: string) => void;
 }
 
 const STATUS_TEXT: Record<FileMeta['status'], { text: string; color: string }> = {
@@ -44,9 +51,13 @@ export function FileDetailDrawer({
   onOpenShare,
   onOpenPermissions,
   onOpenSend,
+  folderName,
+  onOpenFolder,
 }: Props) {
   const isMobile = useIsMobile();
   const status = file ? STATUS_TEXT[file.status] : null;
+  // 「所在文件夹」：根目录时接口给空串，显示成「我的文件」
+  const folderLabel = folderName && folderName.length > 0 ? folderName : '我的文件';
   // 手机上按钮要大（手指点得准），并且纵向排列，避免一行挤 4 个
   const actionProps = isMobile
     ? { block: true, size: 'large' as const, style: { height: TOUCH_HEIGHT } }
@@ -80,6 +91,22 @@ export function FileDetailDrawer({
               ) : (
                 '—'
               )}
+            </Descriptions.Item>
+            <Descriptions.Item label="所在文件夹">
+              {/* 「跳过去」：用户要求电脑端能直接跳到文件所在的目录 */}
+              <Space size={4} wrap>
+                <Typography.Text>{folderLabel}</Typography.Text>
+                {file.folder_id && onOpenFolder && (
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<FolderOpenOutlined />}
+                    onClick={() => onOpenFolder(file.folder_id)}
+                  >
+                    跳过去
+                  </Button>
+                )}
+              </Space>
             </Descriptions.Item>
             <Descriptions.Item label="所有者">
               <Typography.Text code style={{ fontSize: 12 }}>

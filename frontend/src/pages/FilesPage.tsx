@@ -635,6 +635,13 @@ export function FilesPage() {
         onOpenShare={(file) => setShareTarget({ file })}
         onOpenPermissions={(file) => setPermTarget({ file })}
         onOpenSend={(file) => setSendTarget({ file })}
+        // 「所在文件夹 + 跳过去」（用户 2026-10-03 要求电脑端要有跳转）：
+        // 详情里显示当前目录名，点「跳过去」时先关抽屉再切到那个目录
+        folderName={chain.length > 0 ? chain[chain.length - 1]?.name ?? '' : ''}
+        onOpenFolder={(folderId) => {
+          setDetailTarget(null);
+          navigate(`/files/${folderId}`);
+        }}
       />
 
       {/* 版本历史：只增不减，恢复历史版本会追加新版本 */}

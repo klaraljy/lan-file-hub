@@ -387,6 +387,9 @@ QUOTA_EXCEEDED
 | 文件页 `pages/FilesPage.tsx` | 列表视图用**卡片列表**；**搜索框固定在顶部**（滚动时也随时能过滤）；工具栏换行排布 |
 | 卡片 `components/FileCardList.tsx` | **整张卡可点**（文件夹进入、文件看详情，右侧有 `>` 提示）；名字 16px；**「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认；容器底部留 88px，最后一张不会被悬浮条挡住 |
 | 上传 `components/UploadPanel.tsx` | **首屏不再有上传区**：没任务时是右下角**悬浮「上传」按钮**；有任务时是**悬浮进度条**（文件名 + 进度 + 取消 + 添加 + 全部）；全部结束后收成一条「上传完成 N 个 / 继续上传 / 查看 / ×」；点「全部」用底部面板列任务（暂停/继续/取消/移除） |
+| **上传文件夹** `components/UploadPanel.tsx` + `features/uploads/folderUpload.ts`（2026-10-03） | 桌面端多一个「**选择文件夹上传**」按钮（`webkitdirectory`），并且**把文件夹拖进上传区**也会走同一条路（`DataTransferItem.webkitGetAsEntry()` 递归读）。上传前弹确认框「将上传 N 个文件、新建 M 个文件夹、共约 X MB」，确认后**按浅→深建目录**（同名目录复用，靠 409 判定），再把文件分批传到各自目录。纯逻辑（路径净化、目录链、上限 2000 个文件 / 32 层）在 `folderUpload.ts`，单测 12 条 |
+| 文件详情 `components/FileDetailDrawer.tsx`（2026-10-03） | 新增「**所在文件夹**」一行 + 「**跳过去**」按钮：详情里直接看到文件在哪个目录，点一下关掉抽屉并跳过去（用户要求"电脑端要有跳转的功能或者目录的位置"） |
+| 设置页 `pages/SettingsPage.tsx`（2026-10-03） | 新增两块：「**配套手机应用**」（与「我的」页共用 `PhoneAppDownload`，含下载/扫码）与「**文件存在哪**」（仅管理员：显示 `storage_root`、说明对象按 SHA-256 命名、提醒别手工删目录）。另外修正了原来写错的 Token 存储说明（现在默认 sessionStorage，勾了「记住我」才 localStorage） |
 | 弹层 `components/ResponsiveSheet.tsx` | 手机上一律**从底部滑出**（AntD `Drawer placement="bottom"`，高度 90%）；桌面端仍是居中 Modal。发送给… / 分享 / 权限 / 版本历史 / 新建与重命名文件夹 都走它 —— 只写一份内容，避免"手机版漏改一个" |
 | 网格 `components/FileGrid.tsx` | 列数自适应（手机 1 列 / 窄屏 2 列 / 宽屏更多）；图标按钮在手机上放大到 44px |
 | 详情 `components/FileDetailDrawer.tsx` | 宽度占满（`width="100%"`），操作按钮纵向排列、整行可点 |

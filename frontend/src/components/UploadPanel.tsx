@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, App as AntApp, Button, Card, Progress, Space, Tag, Tooltip, Typography, Upload } from 'antd';
 import {
   CloudUploadOutlined,
+  FolderAddOutlined,
   PauseOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -25,7 +26,13 @@ import {
 
 import { TAB_BAR_HEIGHT } from '../app/MobileTabBar';
 import { ResponsiveSheet } from './ResponsiveSheet';
+import {
+  planFolderUpload,
+  readDroppedEntries,
+  summarizePlan,
+} from '../features/uploads/folderUpload';
 import { useUploads } from '../features/uploads/useUploads';
+import { foldersApi } from '../services/foldersApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { UploadTask, UploadTaskStatus } from '../types/upload';
 
@@ -98,9 +105,14 @@ function DesktopUploadPanel({
   disabled,
   controller,
 }: Props & { controller: UploadsController }) {
-  const { tasks, upload, pause, cancel, retry, resumeWithFile, forget, clearFinished } = controller;
+  const { message, modal } = AntApp.useApp();
+  const { tasks, upload, uploadTo, pause, cancel, retry, resumeWithFile, forget, clearFinished } =
+    controller;
   const [resumeTarget, setResumeTarget] = useState<string | null>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  // 「上传文件夹」（2026-10-03 用户要求）：选目录 / 拖目录都走这里
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [folderBusy, setFolderBusy] = useState(false);
 
   const active = tasks.filter((task) => RUNNING_STATUSES.includes(task.status));
   const totalBytes = tasks.reduce((sum, task) => sum + task.size, 0);
@@ -111,29 +123,168 @@ function DesktopUploadPanel({
   const overallPercent = totalBytes > 0 ? Math.round((doneBytes / totalBytes) * 100) : 0;
   const needsFile = tasks.filter((task) => task.needsFile);
 
+  /**
+   * 上传一个文件夹：先算计划 → 让用户确认 → 逐级建目录 → 分文件传进对应目录。
+   *
+   * ⛔ 先确认再传：用户明确问过"你不会点一下就全备份了吧"，几十上百个文件不能默默传走。
+   */
+  async function handleFolderFiles(fileList: File[]) {
+    if (!folderId || fileList.length === 0) {
+      message.warning('这个文件夹里没有可上传的文件');
+      return;
+    }
+    const plan = planFolderUpload(fileList);
+    if (plan.files.length === 0) {
+      message.warning('这个文件夹里没有可上传的文件（文件名或目录名不合法）');
+      return;
+    }
+    const summary = summarizePlan(plan);
+
+    modal.confirm({
+      title: '确认上传这个文件夹？',
+      content: (
+        <Space direction="vertical" size={4}>
+          <span>
+            将上传 <b>{summary.files}</b> 个文件
+            {summary.directories > 0 ? (
+              <>
+                ，并在当前目录下新建 <b>{summary.directories}</b> 个文件夹
+              </>
+            ) : null}
+            （共约 {formatBytes(summary.bytes)}）。
+          </span>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            目录结构会照原样保留；同名文件夹直接复用，同名文件自动加 (1)、(2)。
+            {plan.skipped > 0 ? `（有 ${plan.skipped} 个条目因路径不合法被跳过）` : ''}
+          </Typography.Text>
+        </Space>
+      ),
+      okText: '开始上传',
+      cancelText: '取消',
+      onOk: async () => {
+        setFolderBusy(true);
+        try {
+          // ① 建目录：按浅 → 深，父目录一定先存在
+          const folderIds = new Map<string, string>();  // 相对目录路径 → 服务器目录 id
+          for (const dirPath of plan.directories) {
+            const slash = dirPath.lastIndexOf('/');
+            const parentPath = slash < 0 ? '' : dirPath.slice(0, slash);
+            const parentId = parentPath === '' ? folderId : folderIds.get(parentPath);
+            if (!parentId) {
+              continue;  // 父目录没建成功（上面已提示），跳过这一支
+            }
+            const created = await ensureChildFolder(parentId, dirPath.slice(slash + 1));
+            if (created) folderIds.set(dirPath, created);
+          }
+
+          // ② 按目标目录分组上传（一组一次 enqueue，任务面板里能看到进度）
+          const byFolder = new Map<string, File[]>();
+          for (const item of plan.files) {
+            const target = item.dirPath === '' ? folderId : folderIds.get(item.dirPath);
+            if (!target) continue;
+            const list = byFolder.get(target) ?? [];
+            list.push(item.file);
+            byFolder.set(target, list);
+          }
+          for (const [target, files] of byFolder) {
+            await uploadTo(files, target);
+          }
+          message.success(`已加入上传队列：${summary.files} 个文件`);
+        } catch (error) {
+          message.error(
+            error instanceof Error ? error.message : '上传文件夹失败，请稍后重试',
+          );
+        } finally {
+          setFolderBusy(false);
+        }
+      },
+    });
+  }
+
+  /** 在当前目录下找/建一个同名子目录；失败返回 null（已在界面上提示） */
+  async function ensureChildFolder(parentId: string, name: string): Promise<string | null> {
+    try {
+      const listing = await foldersApi.children(parentId, { page_size: 100 });
+      const existing = listing.items.find((folder) => folder.name === name);
+      if (existing) return existing.id;
+      const created = await foldersApi.create(parentId, name);
+      return created.id;
+    } catch {
+      message.warning(`没能创建文件夹「${name}」，它下面的文件已跳过`);
+      return null;
+    }
+  }
+
   return (
     <Card size="small" style={{ marginBottom: 16 }} title="上传">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        <Upload.Dragger
-          multiple
-          showUploadList={false}
-          disabled={disabled || !folderId}
-          beforeUpload={(file, fileList) => {
-            // 只在最后一批里触发一次，避免同一次多选被重复提交
-            if (file === fileList[fileList.length - 1]) {
-              void upload(fileList as unknown as File[]);
-            }
-            return false;
+        <div
+          // 拖文件夹进来：antd 的 Dragger 只认文件，目录要用 DataTransferItem 自己递归读
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            const items = event.dataTransfer?.items;
+            if (!items || items.length === 0) return;
+            const hasDirectory = Array.from(items).some(
+              (item) => item.kind === 'file' && item.webkitGetAsEntry?.()?.isDirectory,
+            );
+            if (!hasDirectory) return;  // 纯文件拖拽交给 Dragger 自己的处理
+            event.preventDefault();
+            if (disabled || !folderId || folderBusy) return;
+            void readDroppedEntries(items).then((files) => handleFolderFiles(files));
           }}
         >
-          <p className="ant-upload-drag-icon">
-            <CloudUploadOutlined />
-          </p>
-          <p className="ant-upload-text">点击或拖拽文件到这里上传</p>
-          <p className="ant-upload-hint">
-            大文件自动分块（默认 8 MiB）并在网络中断后从断点继续；上传前会计算 SHA-256。
-          </p>
+          <Upload.Dragger
+            multiple
+            showUploadList={false}
+            disabled={disabled || !folderId}
+            beforeUpload={(file, fileList) => {
+              // 只在最后一批里触发一次，避免同一次多选被重复提交
+              if (file === fileList[fileList.length - 1]) {
+                void upload(fileList as unknown as File[]);
+              }
+              return false;
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <CloudUploadOutlined />
+            </p>
+            <p className="ant-upload-text">点击或拖拽文件到这里上传</p>
+            <p className="ant-upload-hint">
+              大文件自动分块（默认 8 MiB）并在网络中断后从断点继续；上传前会计算 SHA-256。
+              <br />
+              要传整个文件夹（含子目录）：把文件夹拖进来，或点下面的「选择文件夹」。
+            </p>
         </Upload.Dragger>
+        </div>
+
+        {/* 「上传文件夹」入口（2026-10-03 用户要求）：选一个目录，保留里面的结构 */}
+        <Space wrap>
+          <Button
+            icon={<FolderAddOutlined />}
+            disabled={disabled || !folderId || folderBusy}
+            loading={folderBusy}
+            onClick={() => folderInputRef.current?.click()}
+          >
+            选择文件夹上传
+          </Button>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            会保留原来的目录结构（同名文件夹复用、同名文件自动加 (1)）
+          </Typography.Text>
+        </Space>
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          // @ts-expect-error webkitdirectory 不在标准类型里，但 Chrome/Edge 都支持
+          webkitdirectory=""
+          directory=""
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = '';  // 允许连续选同一个目录两次
+            void handleFolderFiles(files);
+          }}
+        />
 
         {needsFile.length > 0 && (
           <Alert

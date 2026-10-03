@@ -97,6 +97,19 @@ export function useUploads(folderId: string | undefined) {
     [folderId, manager, refreshListing],
   );
 
+  /**
+   * 传到**指定目录**（2026-10-03「上传文件夹」用）：
+   * 目录结构先由调用方建好（`foldersApi`），这里只负责把一批文件放进那个目录。
+   */
+  const uploadTo = useCallback(
+    async (files: File[], targetFolderId: string) => {
+      if (!targetFolderId || files.length === 0) return;
+      await manager.enqueue(files, { folderId: targetFolderId });
+      await refreshListing();
+    },
+    [manager, refreshListing],
+  );
+
   const pause = useCallback((id: string) => manager.pause(id), [manager]);
   const cancel = useCallback((id: string) => manager.cancel(id), [manager]);
   const retry = useCallback((id: string) => manager.retry(id), [manager]);
@@ -121,7 +134,18 @@ export function useUploads(folderId: string | undefined) {
     setTasks((previous) => previous.filter((task) => !isFinished(task.status)));
   }, []);
 
-  return { tasks, upload, pause, cancel, retry, resumeWithFile, forget, clearFinished, storeReady };
+  return {
+    tasks,
+    upload,
+    uploadTo,
+    pause,
+    cancel,
+    retry,
+    resumeWithFile,
+    forget,
+    clearFinished,
+    storeReady,
+  };
 }
 
 export function isFinished(status: UploadTask['status']): boolean {
