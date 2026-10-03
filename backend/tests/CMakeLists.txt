@@ -51,6 +51,7 @@ add_executable(lan_file_hub_integration_tests
   integration/admin_flow_test.cpp
   integration/user_directory_test.cpp
   integration/invite_flow_test.cpp
+  integration/recent_files_test.cpp
   integration/fault_injection_test.cpp
 )
 
