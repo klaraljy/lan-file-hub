@@ -35,9 +35,46 @@
 前端纯函数单测 +9（大小、时间、拼行、兜底、局域网地址替换）。
 
 **这一步之后还剩的活**（按优先级）：
-1. 「最近文件」接口的**集成测试**（见本文件开头那条遗留）——仍未补；
+1. ~~「最近文件」接口的**集成测试**~~ ✅ 已补（2026-10-03，见 §11）；
 2. 单次上传路径与"回收站恢复同名"的命名策略统一（回收站那条**有意保持拒绝**）；
 3. 真机：用户手机装新 APK、手机热点下扫码、5 GB 大文件（**只有用户能验**）。
+
+---
+
+## 11. ✅ 已做：「最近文件」集成测试 + 同名自动改名的后端钉子（2026-10-03）
+
+**新增 `backend/tests/integration/recent_files_test.cpp`（5 条）**，把开头那条遗留补上：
+
+| 用例 | 钉住什么 |
+|---|---|
+| `ListsOwnFilesNewestFirstAcrossFolders` | 跨文件夹、按"最后改动时间"倒序；**别人的文件一条都不出现**；total 只算自己的 |
+| `TellsTheUserWhichFolderEachFileIsIn` | `folder_id`/`folder_name` 带出来（用户得知道去哪儿找），根目录用根目录名 |
+| `HidesTrashedFilesAndShrinksTheTotal` | 软删除后不再出现，**total 一起减**（不能过滤了列表却留着旧总数） |
+| `IsEmptyForANewAccount` | 新账号空列表、total=0 |
+| `PaginatesWithoutGapsOrDuplicates` | page_size=2 翻三页拼起来**不重不漏**、每页 total 都是全量、越界页空列表、page_size=1 下界可用 |
+
+> 排序用 SQL 摆布 `updated_at`（连续上传的几个文件可能落在同一微秒，否则断言会随机成败）；
+> 用例注释里写了原因。
+
+**顺带修掉两条真问题**（跑全量集成测试时暴露的）：
+
+1. ⛔ **`DedupQuotaTest.QuotaIsNotAffectedByFailedUpload` 是红的**（2026-10-03 全量集成 157 条里唯一失败）：
+   它断言"同名上传被拒"，而同日早些时候同名已经改成**自动加 (1)**（用户要求）→ 那条路不再失败。
+   已改成用**超过单文件上限**这条确定失败的路径，验的性质不变（失败的上传不改变已用容量）。
+2. ⛔ **同名自动加 (1) 这条行为此前没有任何后端测试**（前端/手工验过，集成里没有）。
+   新增 `UploadFlowTest.SameNameUploadGetsASuffixInsteadOfBeingRejected`：
+   同一文件名连传三次 → 会话名与落库名依次是 `同名.txt` / `同名 (1).txt` / `同名 (2).txt`，
+   三份并存、互不覆盖。
+
+**跑法（本机没有 Docker 时的替代）**：测试库建在**便携包那个 PostgreSQL** 上（独立库
+`lan_file_hub_test`，与用户的 `lanfilehub` 库互不影响），跑完确认用户库里 3 个账号与文件都还在：
+
+```powershell
+$env:DATABASE_URL = '<便携库连接串，库名换成 lan_file_hub_test>'
+$env:REDIS_URL    = 'redis://127.0.0.1:56379'      # 便携 Redis
+$env:LAN_FILE_HUB_REQUIRE_DB = '1'                 # 数据库缺失必须报失败，不许静默跳过
+.\scripts\test.ps1 -Preset debug -Label integration   # 串行，158/158
+```
 
 ---
 
