@@ -31,6 +31,10 @@
   <string name="connect_search_no_lan">手机现在没有连上任何局域网：请连上电脑所在的 WiFi，或打开手机热点并让电脑连上来（用流量是连不到电脑的）。</string>
   <string name="connect_search_no_ip">手机还没拿到局域网地址（如果刚开热点，等几秒再点一次「找电脑」）。</string>
   <string name="connect_discovered_label">自动发现</string>
+  <!-- App 内下载（2026-10-03）：WebView 自己不下载，必须交给系统下载管理器 -->
+  <string name="web_download_started">已开始下载，完成后在通知栏点一下就能安装或打开</string>
+  <string name="web_download_failed">下载没能开始，请改用右上角的「在浏览器打开」再试</string>
+  <string name="web_download_unsupported">这种内容的下载要改用右上角的「在浏览器打开」</string>
   <string name="connect_search_scope">（已扫过 %2$s 的 %3$s 端口；本机地址 %1$s）</string>
 
   <string name="connect_online">在线 · 点一下就能用</string>
