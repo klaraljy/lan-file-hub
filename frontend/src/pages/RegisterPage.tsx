@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Card, Form, Input, Space, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
@@ -12,6 +12,8 @@ interface RegisterForm {
   email: string;
   password: string;
   confirm: string;
+  /** 「记住我」（2026-10-03）：注册即登录，默认记 30 天 */
+  remember: boolean;
 }
 
 // 与后端 AuthService::ValidateUsername / ValidateEmail 保持一致，
@@ -67,6 +69,7 @@ export function RegisterPage() {
         values.email.trim(),
         values.password,
         inviteToken || undefined,
+        values.remember,
       );
       navigate('/files', { replace: true });
     } catch (error) {
@@ -175,6 +178,15 @@ export function RegisterPage() {
             ]}
           >
             <Input.Password autoComplete="new-password" placeholder="再次输入密码" />
+          </Form.Item>
+
+          <Form.Item name="remember" valuePropName="checked" initialValue={true}>
+            <Checkbox>
+              记住我
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                （这台设备 30 天内不用再登录）
+              </Typography.Text>
+            </Checkbox>
           </Form.Item>
 
           <Button type="primary" htmlType="submit" block loading={submitting} disabled={blocked}>

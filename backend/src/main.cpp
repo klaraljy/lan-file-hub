@@ -167,7 +167,8 @@ int main(int /*argc*/, char** /*argv*/) {
       *context->users, *context->files, *context->audit, *context->uploads, *context->storage);
   context->auth = std::make_shared<AuthService>(
       *context->users, *context->password_hasher, *context->jwt,
-      AuthServiceOptions{config.max_user_storage_bytes}, context->folders.get());
+      AuthServiceOptions{config.max_user_storage_bytes, config.jwt_remember_expire_seconds},
+      context->folders.get());
   context->trash_service = std::make_shared<TrashService>(
       *context->trash, *context->files, *context->folders, *context->audit, *context->cleanup_tasks,
       *context->permissions_repo, *context->shares, *context->permissions);

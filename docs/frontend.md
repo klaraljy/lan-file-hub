@@ -328,7 +328,11 @@ QUOTA_EXCEEDED
 - 使用 TanStack Query 管理服务端数据。
 - 使用 IndexedDB 保存未完成上传任务的必要信息。
 - 不在 LocalStorage 中保存密码。
-- 不在 LocalStorage 中保存长期敏感 Token。
+- 不在 LocalStorage 中保存长期敏感 Token —— **例外（用户 2026-10-03 明确要求）**：登录页的
+  「记住我」勾上时，令牌写 `localStorage` 并配 30 天长效令牌（`JWT_REMEMBER_EXPIRE_SECONDS`），
+  因为"手机 App 每次都要重登"是产品缺陷；不勾就仍然只进 `sessionStorage`。
+  这是**显式**取舍：长期存储会放大 XSS 的后果，所以勾选框默认在、但可以取消，
+  并在 `README.md`「认证与 Token 策略」写明生产环境应改 HttpOnly Cookie。
 - Token 处理方式必须统一，避免多个页面分别实现。
 - 刷新后从后端会话恢复状态，而不是只依赖内存中的 React 状态。
 - 认证方案与 Token 生命周期见 [api.md](api.md)，Token 安全要求见 [security.md](security.md)。

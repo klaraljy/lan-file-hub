@@ -36,7 +36,7 @@
 | L1 | `backend/src/infrastructure/database.cpp:54` | `std::shared_ptr<ConnectionPool>(new ConnectionPool(...))` 是唯一一处裸 `new`（已被 shared_ptr 接管，**无泄漏**） | 若构造函数可公开则改 `std::make_shared` |
 | L2 | `backend/src/api/metrics_controller.cpp` | `/metrics` 不做认证（Prometheus 常规做法，只暴露聚合数字） | 生产用反向代理白名单（`deploy/nginx.conf.example` 已给示例） |
 | L3 | 全局 | Windows 上 LeakSanitizer 不可用，ASan 跑的是内存错误检测而非泄漏检测 | 在 Linux CI 上开 `detect_leaks=1` 补这一课 |
-| L4 | `frontend/src/services/tokenStore.ts` | Token 存 `sessionStorage`（生产建议 HttpOnly Cookie） | 与 HTTPS 一起在正式部署时处理（README 已知限制已写） |
+| L4 | `frontend/src/services/tokenStore.ts` | 令牌默认进 `sessionStorage`；**勾了「记住我」则进 `localStorage` 并配 30 天有效期**（2026-10-03 用户要求，代价与替代方案写在 README） | 生产环境整体改 HttpOnly Cookie，与 HTTPS 一起做（README 已知限制已写） |
 | L5 | `docker-compose.yml` | 默认口令 `lan_file_hub_dev` 仅适用于本机开发 | 部署清单已要求修改（`docs/deployment.md` 生产检查清单） |
 
 ## 2. 30 项验收逐条结论

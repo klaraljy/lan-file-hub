@@ -406,7 +406,7 @@ clang-tidy（21 个文件）                 -> 见 13.5
 | `backend/src/api/auth_controller.{h,cpp}` | 4 个认证端点 |
 | `backend/src/api/auth_filter.{h,cpp}` | Bearer Token 校验 + 用户状态复查 |
 | `frontend/`（整套 React 工程） | Vite + TS + Ant Design + TanStack Query + Axios；登录页、注册页、受保护路由、登录态恢复 |
-| `frontend/src/services/tokenStore.ts` | Token 只进 sessionStorage，**明确不写 localStorage** |
+| `frontend/src/services/tokenStore.ts` | Token 默认只进 sessionStorage；**勾了「记住我」（默认勾上）才进 localStorage** 并配 30 天长效令牌（用户 2026-10-03 要求） |
 
 ### 14.2 实测结果
 

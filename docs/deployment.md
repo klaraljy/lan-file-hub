@@ -19,6 +19,7 @@ MAX_USER_STORAGE_BYTES
 UPLOAD_SESSION_TTL
 JWT_SECRET
 JWT_EXPIRE_SECONDS
+JWT_REMEMBER_EXPIRE_SECONDS
 DOWNLOAD_RATE_LIMIT
 LOG_LEVEL
 CORS_ALLOWED_ORIGINS
@@ -38,6 +39,11 @@ APP_APK_PATH
 > 如实显示"还没有准备好安装包"，不影响其他功能。
 > 接口每次请求现看这个文件，所以 `scripts\build-android.ps1` 重新出包（它会把新包与
 > `lan-file-hub.apk.json` 侧车一起同步过去）之后**不需要重启后端**，刷新网页即可。
+
+> `JWT_REMEMBER_EXPIRE_SECONDS`（2026-10-03）：登录页勾了「记住我」时签发的令牌有效期，
+> 默认 `2592000`（30 天），允许 1 小时 ~ 365 天。不勾时仍用 `JWT_EXPIRE_SECONDS`（默认 1 小时）。
+> 用户真机反馈"每次打开 App 都要重新登录"，这是配套改动（另一半在前端 `tokenStore`：
+> 勾了才把令牌放进 `localStorage`）。风险与生产替代方案见 `docs/api.md`「认证方案」。
 
 ### 配置要求
 

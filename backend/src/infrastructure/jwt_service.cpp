@@ -33,9 +33,16 @@ std::int64_t ToUnix(const std::chrono::system_clock::time_point& point) {
 JwtService::JwtService(JwtOptions options) : options_(std::move(options)) {}
 
 Result<std::string> JwtService::Issue(const User& user) const {
+  return Issue(user, options_.expire_seconds);
+}
+
+Result<std::string> JwtService::Issue(const User& user, std::uint32_t ttl_seconds) const {
   if (options_.secret.empty()) {
     return Error{"INTERNAL_ERROR", "JWT 密钥未配置"};
   }
+
+  // ttl 传 0 表示"用默认有效期"（调用方不确定时不要签发出一个立刻过期的令牌）
+  const std::uint32_t effective_ttl = ttl_seconds == 0 ? options_.expire_seconds : ttl_seconds;
 
   const auto now = std::chrono::system_clock::now();
   try {
@@ -45,7 +52,7 @@ Result<std::string> JwtService::Issue(const User& user) const {
             .set_type("JWT")
             .set_subject(user.id)
             .set_issued_at(now)
-            .set_expires_at(now + std::chrono::seconds(options_.expire_seconds))
+            .set_expires_at(now + std::chrono::seconds(effective_ttl))
             .set_payload_claim(kClaimUsername, jwt::claim(user.username))
             .set_payload_claim(kClaimRole, jwt::claim(ToDbString(user.role)))
             .set_payload_claim(kClaimPurpose, jwt::claim(std::string(kPurposeSession)))

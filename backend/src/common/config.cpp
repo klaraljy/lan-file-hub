@@ -377,6 +377,14 @@ Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
   }
   config.jwt_expire_seconds = static_cast<std::uint32_t>(jwt_expire.Value());
 
+  // 「记住我」的长效令牌（用户 2026-10-03）：上限 365 天，下限 1 小时。
+  auto jwt_remember = PickUint(dotenv, "JWT_REMEMBER_EXPIRE_SECONDS", 30ULL * 24 * 60 * 60, 3600,
+                               365ULL * 24 * 60 * 60);
+  if (!jwt_remember) {
+    return jwt_remember.GetError();
+  }
+  config.jwt_remember_expire_seconds = static_cast<std::uint32_t>(jwt_remember.Value());
+
   auto rate = PickUint(dotenv, "DOWNLOAD_RATE_LIMIT", 0, 0, 1ULL << 40);
   if (!rate) {
     return rate.GetError();

@@ -26,6 +26,11 @@ import java.util.concurrent.Executors;
  * <p>刻意走"App 内打开电脑网页"这条简单路线：文件列表、上传下载、分享全部复用电脑端网页，
  * App 只负责**记住地址 + 探活 + 用内置浏览器打开**。这样网页改一次，App 不用跟着改。
  *
+ * <p>2026-10-03 用户要求"点开 App 就应该自动检测连上没有"，所以这里多了两件事：
+ *   ① 顶部显示**当前网络**（WiFi / 手机热点 / 流量 —— 不读 WiFi 名字，避免要定位权限）；
+ *   ② 已知地址都不在线时**自动扫一遍当前网段**找电脑（{@link ServerDiscovery}），
+ *      扫不到就按网络类型给出人话解释（流量连不上 / 可能是客户端隔离，请改用手机热点）。
+ *
  * <p>不引 AndroidX：只用系统自带的 View/Activity，装到老手机上也不挑。
  */
 public class ConnectActivity extends Activity {
@@ -34,11 +39,18 @@ public class ConnectActivity extends Activity {
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final ExecutorService probeExecutor = Executors.newSingleThreadExecutor();
+  /** 扫网段单独一个线程池：它要跑几秒，不能把上面的探活队列堵住 */
+  private final ExecutorService discoverExecutor = Executors.newSingleThreadExecutor();
 
   private ServerAdapter adapter;
   private ListView listView;
   private TextView emptyView;
+  private TextView networkView;
+  private TextView searchView;
   private boolean probing;
+  private boolean discovering;
+  /** 同一网络里只自动扫一次（用户手动点「找电脑」不受限制） */
+  private String autoScannedFor;
 
   private final Runnable refreshTask =
       new Runnable() {
@@ -57,6 +69,8 @@ public class ConnectActivity extends Activity {
     adapter = new ServerAdapter(this);
     listView = findViewById(R.id.server_list);
     emptyView = findViewById(R.id.empty_hint);
+    networkView = findViewById(R.id.network_state);
+    searchView = findViewById(R.id.search_state);
     listView.setAdapter(adapter);
 
     listView.setOnItemClickListener(
@@ -69,6 +83,7 @@ public class ConnectActivity extends Activity {
         });
 
     findViewById(R.id.add_server).setOnClickListener(view -> showAddDialog());
+    findViewById(R.id.find_server).setOnClickListener(view -> startDiscovery(true));
     findViewById(R.id.open_share).setOnClickListener(
         view -> startActivity(new Intent(this, MainActivity.class)));
   }
@@ -79,6 +94,7 @@ public class ConnectActivity extends Activity {
     reloadServers();
     handler.removeCallbacks(refreshTask);
     handler.post(refreshTask);
+    updateNetworkLine();
   }
 
   @Override
@@ -91,6 +107,31 @@ public class ConnectActivity extends Activity {
   protected void onDestroy() {
     super.onDestroy();
     probeExecutor.shutdownNow();
+    discoverExecutor.shutdownNow();
+  }
+
+  /** 顶部那行"当前网络"：换网络（WiFi ↔ 热点 ↔ 流量）后回到这个页面就会更新 */
+  private void updateNetworkLine() {
+    NetworkState.Kind kind = NetworkState.detect(this);
+    networkView.setText(getString(R.string.connect_network_label, networkLabel(kind)));
+    networkView.setTextColor(NetworkState.canReachComputer(kind) ? 0xFF1F9D55 : 0xFFB45309);
+  }
+
+  private String networkLabel(NetworkState.Kind kind) {
+    switch (kind) {
+      case WIFI:
+        return getString(R.string.network_wifi);
+      case HOTSPOT:
+        return getString(R.string.network_hotspot);
+      case ETHERNET:
+        return getString(R.string.network_ethernet);
+      case CELLULAR:
+        return getString(R.string.network_cellular);
+      case OTHER:
+        return getString(R.string.network_other);
+      default:
+        return getString(R.string.network_none);
+    }
   }
 
   private void reloadServers() {
@@ -110,12 +151,16 @@ public class ConnectActivity extends Activity {
     final List<ServerStore.Server> servers = adapter.getServers();
     if (servers.isEmpty()) {
       probing = false;
+      // 一条记录都没有：直接开始自动查找，用户不用先"添加电脑"
+      startDiscovery(false);
       return;
     }
     probeExecutor.execute(
         () -> {
+          boolean anyOnline = false;
           for (ServerStore.Server server : servers) {
             final boolean online = ServerProbe.isOnline(server);
+            anyOnline = anyOnline || online;
             handler.post(
                 () ->
                     adapter.setStatus(
@@ -123,6 +168,83 @@ public class ConnectActivity extends Activity {
                         online ? ServerAdapter.Status.ONLINE : ServerAdapter.Status.OFFLINE));
           }
           probing = false;
+          // 已知地址全都不在线（换网络后旧地址就死了）→ 自动扫一遍当前网段
+          if (!anyOnline) {
+            startDiscovery(false);
+          }
+        });
+  }
+
+  /**
+   * 扫当前网段找电脑。
+   *
+   * @param manual 用户自己点的「找电脑」：即使这个网络已经自动扫过也要再扫一次
+   */
+  private void startDiscovery(boolean manual) {
+    if (discovering) {
+      return;
+    }
+    NetworkState.Kind kind = NetworkState.detect(this);
+    if (!NetworkState.canReachComputer(kind)) {
+      // 流量下扫也没用（电脑不在移动网络里），直接说清楚，别让用户白等
+      searchView.setText(R.string.connect_search_no_lan);
+      return;
+    }
+    final String ownIp = NetUtil.lanIp();
+    if (ownIp == null) {
+      searchView.setText(R.string.connect_search_no_ip);
+      return;
+    }
+    final int port = ServerStore.defaultPort(this);
+    final String scanKey = ownIp + ":" + port;
+    if (!manual && scanKey.equals(autoScannedFor)) {
+      return;  // 这个网络这次已经扫过了
+    }
+    autoScannedFor = scanKey;
+    discovering = true;
+    searchView.setText(getString(R.string.connect_searching, 0, 0));
+
+    discoverExecutor.execute(
+        () -> {
+          List<ServerDiscovery.Found> found =
+              ServerDiscovery.scan(
+                  ownIp,
+                  port,
+                  (done, total) ->
+                      handler.post(
+                          () -> searchView.setText(getString(R.string.connect_searching, done, total))));
+
+          boolean added = false;
+          for (ServerDiscovery.Found server : found) {
+            ServerStore.Server known = ServerStore.find(this, server.host, server.port);
+            if (known == null) {
+              ServerStore.addOrUpdate(
+                  this,
+                  new ServerStore.Server(
+                      server.host,
+                      server.port,
+                      getString(R.string.connect_discovered_label),
+                      System.currentTimeMillis()));
+              added = true;
+            }
+          }
+          final boolean changed = added;
+          handler.post(
+              () -> {
+                discovering = false;
+                if (changed) {
+                  reloadServers();
+                }
+                if (!found.isEmpty()) {
+                  searchView.setText(getString(R.string.connect_found, found.size()));
+                } else {
+                  searchView.setText(
+                      kind == NetworkState.Kind.HOTSPOT
+                          ? getString(R.string.connect_not_found_hotspot)
+                          : getString(R.string.connect_not_found_wifi));
+                }
+                probeAll();
+              });
         });
   }
 

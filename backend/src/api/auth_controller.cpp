@@ -48,6 +48,14 @@ std::string ReadStringField(const nlohmann::json& body, const char* key) {
   return body[key].get<std::string>();
 }
 
+// 「记住我」（用户 2026-10-03）：字段缺失或类型不对都当 false。
+// ⛔ 默认必须是**短令牌**——宁可让用户多登一次，也不要因为解析写错而默默发出长效令牌。
+bool ReadBoolField(const nlohmann::json& body, const char* key) {
+  if (!body.contains(key) || !body[key].is_boolean())
+    return false;
+  return body[key].get<bool>();
+}
+
 void RespondError(const std::function<void(const drogon::HttpResponsePtr&)>& callback,
                   const Error& error) {
   // 失败原因进日志（已脱敏），但**不回显**给调用方
@@ -77,6 +85,7 @@ void AuthController::Register(const drogon::HttpRequestPtr& req,
   request.username = ReadStringField(body.Value(), "username");
   request.email = ReadStringField(body.Value(), "email");
   request.password = ReadStringField(body.Value(), "password");
+  request.remember = ReadBoolField(body.Value(), "remember");
 
   // 邀请制注册（用户 2026-10-02）：关掉自助注册后**必须**带有效邀请；
   // 开着自助注册时也接受邀请（便于统计"这个人是被谁邀请来的"），邀请无效就当作没用邀请。
@@ -84,8 +93,8 @@ void AuthController::Register(const drogon::HttpRequestPtr& req,
   std::optional<Invite> consumed_invite;
   if (!invite_token.empty() || !context->allow_self_registration) {
     if (invite_token.empty()) {
-      RespondError(callback, Error{"INVITE_REQUIRED",
-                                   "本实例已关闭自助注册，请让管理员发一条邀请链接给你"});
+      RespondError(callback,
+                   Error{"INVITE_REQUIRED", "本实例已关闭自助注册，请让管理员发一条邀请链接给你"});
       return;
     }
     if (!context->invites) {
@@ -112,9 +121,8 @@ void AuthController::Register(const drogon::HttpRequestPtr& req,
 
   if (consumed_invite.has_value()) {
     // 只记 id 与哈希前缀，**不记 token 明文**（与分享链接同口径）
-    spdlog::info("邀请注册成功 | invite_id={} | token_ref={} | username={}",
-                 consumed_invite->id, HashInviteToken(invite_token).substr(0, 8),
-                 result.Value().user.username);
+    spdlog::info("邀请注册成功 | invite_id={} | token_ref={} | username={}", consumed_invite->id,
+                 HashInviteToken(invite_token).substr(0, 8), result.Value().user.username);
   }
 
   // 只记录用户名，不记录口令或 Token
@@ -143,6 +151,7 @@ void AuthController::Login(const drogon::HttpRequestPtr& req,
     request.identifier = ReadStringField(body.Value(), "email");
   }
   request.password = ReadStringField(body.Value(), "password");
+  request.remember = ReadBoolField(body.Value(), "remember");
 
   // 限流（阶段十二）：两个维度都要有。
   // 只看账号挡不住"换着用户名撞库"；只看 IP 会把同一个 NAT 出口后面的所有同事一起锁死，

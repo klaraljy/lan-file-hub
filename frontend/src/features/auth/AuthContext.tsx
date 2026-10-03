@@ -10,13 +10,16 @@ export type AuthStatus = 'restoring' | 'authenticated' | 'anonymous';
 interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
-  login: (identifier: string, password: string) => Promise<void>;
+  /** remember = true（默认）时把令牌存起来跨重启保留，见 tokenStore */
+  login: (identifier: string, password: string, remember?: boolean) => Promise<void>;
   register: (
     username: string,
     email: string,
     password: string,
     /** 邀请制注册：邀请链接里的 token（关闭自助注册时必填） */
     inviteToken?: string,
+    /** 「记住我」（2026-10-03）：默认勾上，手机上不用每次重登 */
+    remember?: boolean,
   ) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -39,7 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [forgetSession]);
 
-  // 登录态恢复：页面刷新后凭 sessionStorage 里的 Token 重新拉一次 /auth/me
+  // 登录态恢复：页面刷新/App 重开之后凭保存的 Token 重新拉一次 /auth/me
+  // （勾了「记住我」时 Token 在 localStorage，跨浏览器与 App 重启都还在）
   useEffect(() => {
     let cancelled = false;
 
@@ -70,17 +74,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (identifier: string, password: string) => {
-    const payload = await authApi.login(identifier, password);
-    tokenStore.set(payload.access_token);
-    setUser(payload.user);
-    setStatus('authenticated');
-  }, []);
+  const login = useCallback(
+    async (identifier: string, password: string, remember = true) => {
+      const payload = await authApi.login(identifier, password, remember);
+      tokenStore.set(payload.access_token, remember);
+      setUser(payload.user);
+      setStatus('authenticated');
+    },
+    [],
+  );
 
   const register = useCallback(
-    async (username: string, email: string, password: string, inviteToken?: string) => {
-      const payload = await authApi.register(username, email, password, inviteToken);
-      tokenStore.set(payload.access_token);
+    async (
+      username: string,
+      email: string,
+      password: string,
+      inviteToken?: string,
+      remember = true,
+    ) => {
+      const payload = await authApi.register(username, email, password, inviteToken, remember);
+      tokenStore.set(payload.access_token, remember);
       setUser(payload.user);
       setStatus('authenticated');
     },

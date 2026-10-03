@@ -52,6 +52,11 @@ class JwtService {
   // 签发。失败（例如密钥为空）返回 Error。
   [[nodiscard]] Result<std::string> Issue(const User& user) const;
 
+  // 签发一个**指定有效期**的会话令牌（用户 2026-10-03：登录页的「记住我」——
+  // 勾了就发长效令牌，手机 App 不用每次重登；不勾就还是默认的短令牌）。
+  // ttl_seconds = 0 时回退到 options_.expire_seconds。
+  [[nodiscard]] Result<std::string> Issue(const User& user, std::uint32_t ttl_seconds) const;
+
   // 校验并解析。失败时区分两种错误码：
   //   TOKEN_EXPIRED —— 签名有效但已过期（客户端应重新登录）
   //   UNAUTHENTICATED —— 格式错误、签名不匹配、issuer 不符、缺少必要声明

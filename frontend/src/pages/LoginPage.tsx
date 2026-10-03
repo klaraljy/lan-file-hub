@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../features/auth/AuthContext';
@@ -8,6 +8,8 @@ import { ApiError } from '../services/api';
 interface LoginForm {
   identifier: string;
   password: string;
+  /** 「记住我」（2026-10-03）：默认勾上 —— 手机 App 里每次都要重登是产品缺陷 */
+  remember: boolean;
 }
 
 export function LoginPage() {
@@ -24,7 +26,7 @@ export function LoginPage() {
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await login(values.identifier.trim(), values.password);
+      await login(values.identifier.trim(), values.password, values.remember);
       navigate(from, { replace: true });
     } catch (error) {
       // 后端对「用户不存在」和「密码错误」返回同一句文案，这里原样展示
@@ -57,6 +59,15 @@ export function LoginPage() {
           <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
             {/* 密码不写入任何本地存储；浏览器自动填充由 autoComplete 控制 */}
             <Input.Password autoComplete="current-password" placeholder="请输入密码" />
+          </Form.Item>
+
+          <Form.Item name="remember" valuePropName="checked" initialValue={true}>
+            <Checkbox>
+              记住我
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                （这台设备 30 天内不用再登录；公用电脑请取消勾选）
+              </Typography.Text>
+            </Checkbox>
           </Form.Item>
 
           <Button type="primary" htmlType="submit" block loading={submitting}>

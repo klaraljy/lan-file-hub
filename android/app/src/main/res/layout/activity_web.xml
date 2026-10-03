@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- App 内浏览器：一条窄工具条 + 网页本体 -->
+<!--
+  App 内浏览器：**一行**工具条 + 网页本体（用户 2026-10-03 反馈：
+  "最顶部怎么有一个这么突兀的 IP 地址、刷新、关闭和跳转浏览器" ——
+  所以把 IP 与三个操作并进「局域网文件柜」这一行：左边固定是应用名，中间小字是地址，
+  右边三个图标按钮；每个图标按钮的可点区域都有 44dp（手指点得准，AGENTS §14.1）。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -8,43 +13,62 @@
   <LinearLayout
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
+      android:background="#F5F5F5"
       android:gravity="center_vertical"
       android:orientation="horizontal"
       android:paddingStart="12dp"
-      android:paddingTop="8dp"
-      android:paddingEnd="12dp"
-      android:paddingBottom="8dp">
+      android:paddingTop="2dp"
+      android:paddingEnd="4dp"
+      android:paddingBottom="2dp">
 
     <TextView
         android:id="@+id/web_title"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:ellipsize="end"
         android:maxLines="1"
+        android:text="@string/app_name"
         android:textSize="16sp"
         android:textStyle="bold" />
 
-    <Button
+    <TextView
+        android:id="@+id/web_address"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:ellipsize="middle"
+        android:maxLines="1"
+        android:textSize="12sp" />
+
+    <TextView
         android:id="@+id/web_reload"
-        style="?android:attr/buttonStyleSmall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/web_reload" />
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/web_reload"
+        android:gravity="center"
+        android:text="@string/web_reload_glyph"
+        android:textSize="20sp" />
 
-    <Button
+    <TextView
         android:id="@+id/web_external"
-        style="?android:attr/buttonStyleSmall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/web_external" />
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/web_external"
+        android:gravity="center"
+        android:text="@string/web_external_glyph"
+        android:textSize="20sp" />
 
-    <Button
+    <TextView
         android:id="@+id/web_close"
-        style="?android:attr/buttonStyleSmall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/web_close" />
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/web_close"
+        android:gravity="center"
+        android:text="@string/web_close_glyph"
+        android:textSize="20sp" />
   </LinearLayout>
 
   <WebView

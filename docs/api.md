@@ -167,11 +167,28 @@ Content-Type: application/json
 POST /api/v1/auth/login
 Content-Type: application/json
 
-{ "username": "alice", "password": "correct-horse-battery" }
+{ "username": "alice", "password": "correct-horse-battery", "remember": true }
 ```
 
 `username` 字段也接受邮箱（带 `@` 时前端会改用 `email` 字段，后端两者都认）。
 响应结构与注册完全一致。
+
+#### `remember`：记住我（2026-10-03 新增，用户要求）
+
+用户反馈"每次打开 App 都要重新登录"——这是**产品缺陷**，所以登录与注册都接受一个可选的
+布尔字段 `remember`：
+
+| `remember` | 令牌有效期 | 前端存哪 |
+|---|---|---|
+| `true` | `JWT_REMEMBER_EXPIRE_SECONDS`（默认 **30 天**） | `localStorage`（跨浏览器/App 重启还在） |
+| 缺省或 `false` | `JWT_EXPIRE_SECONDS`（默认 **1 小时**） | `sessionStorage`（关掉就没了） |
+
+- ⛔ 字段缺失、类型不对一律按 `false` 处理：**默认必须是短令牌**，解析写错也不能默默发长效令牌。
+- 响应里的 `expires_in`（秒）就是本次实际用的有效期，客户端据此决定存储位置与提示语；
+  **两个方向都有集成测试**（`integration/auth_flow_test.cpp` 的 `RememberMeControlsTokenLifetime`）。
+- 安全代价写在明处：令牌放 `localStorage` 会拉长 XSS 的窃取窗口，所以「记住我」是显式勾选
+  （默认勾上，方便非技术用户），公用电脑可以取消。生产环境的正解仍是 HttpOnly + Secure +
+  SameSite Cookie（见下文「认证方案」）。
 
 ### 登出
 
@@ -1070,6 +1087,11 @@ JWT 要求：
 - CSRF 防护。
 
 若项目为了简化前后端开发使用内存 Token，必须在 README 中明确其生产限制。
+
+> **本项目的现状（2026-10-03 更新）**：默认仍是"内存 + `sessionStorage`"的短令牌；
+> **只有用户显式勾选「记住我」**（默认勾上）时，令牌才写 `localStorage` 并配 30 天有效期
+> —— 这是用户真机反馈"每次都要重登"之后的有意取舍，风险与替代方案见上文登录一节，
+> 以及 `README.md` 的「认证与 Token 策略」。生产环境（公司可用）仍应按上面四条改造。
 
 
 ## 管理员接口（阶段十三）

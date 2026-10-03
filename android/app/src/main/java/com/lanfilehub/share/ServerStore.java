@@ -53,6 +53,29 @@ public final class ServerStore {
 
   private ServerStore() {}
 
+  /** 后端默认端口（便携包形态；自动查找电脑时按这个端口扫） */
+  public static final int DEFAULT_PORT = 9180;
+
+  /** 便携包默认端口；用户存过带端口的地址时，自动查找也用那个端口（同一个后端只有一个端口） */
+  public static int defaultPort(android.content.Context context) {
+    for (Server server : load(context)) {
+      if (server.port > 0) {
+        return server.port;
+      }
+    }
+    return DEFAULT_PORT;
+  }
+
+  /** 按 host:port 找一条已知记录（自动查找时用来判断"这台是不是新的"）；没有返回 null。 */
+  public static Server find(android.content.Context context, String host, int port) {
+    for (Server server : load(context)) {
+      if (server.port == port && server.host != null && server.host.equals(host)) {
+        return server;
+      }
+    }
+    return null;
+  }
+
   /**
    * 把用户输入变成一台服务器的信息。允许只输 IP（最常见），也允许带端口或整条 URL：
    *

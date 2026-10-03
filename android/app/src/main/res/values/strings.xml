@@ -4,11 +4,31 @@
 
   <!-- 「连接电脑」页（2026-10-02 新增：App 里记住电脑地址、看在线状态、点开就用） -->
   <string name="connect_title">连接电脑</string>
-  <string name="connect_subtitle">点下面的电脑就能打开它的文件页面（网址会记在这里，下次不用再输）。</string>
-  <string name="connect_empty">还没有连过电脑。\n先在电脑上双击启动，然后点下面「添加电脑」，把电脑上显示的地址输进来（例如 192.168.1.5）。</string>
-  <string name="connect_footer">手机要和电脑连同一个 WiFi（或电脑连你的手机热点）。长按一条可以删除。</string>
-  <string name="connect_add_button">添加电脑</string>
-  <string name="connect_share_button">快传（两台手机互传）</string>
+  <string name="connect_subtitle">点下面的电脑就能打开它的文件页面；地址会记在这里，下次不用再输。</string>
+  <string name="connect_empty">还没有连过电脑。\n先在电脑上双击启动，手机连上同一个 WiFi/热点，然后点下面「找电脑」——App 会自己把它找出来。</string>
+  <string name="connect_footer">手机要和电脑连同一个网络（同一个 WiFi，或电脑连你的手机热点）。长按一条可以改地址或删除。</string>
+  <string name="connect_add_button">手动输入地址</string>
+  <string name="connect_find_button">找电脑</string>
+  <string name="connect_share_button">快传（两台手机互传，不经过电脑）</string>
+
+  <!-- 当前网络（用户 2026-10-03：只显示 WiFi/热点/流量，不读 WiFi 名字以免要定位权限） -->
+  <string name="connect_network_label">当前网络：%1$s</string>
+  <string name="network_wifi">WiFi</string>
+  <string name="network_hotspot">手机热点</string>
+  <string name="network_ethernet">网线</string>
+  <string name="network_cellular">移动数据（流量）</string>
+  <string name="network_other">其它网络</string>
+  <string name="network_none">没有网络</string>
+
+  <!-- 自动查找电脑（2026-10-03 新增） -->
+  <string name="connect_searching">正在自动查找同一网络里的电脑…（%1$d/%2$d）</string>
+  <string name="connect_found">发现 %1$d 台电脑 —— 点一下就能用。</string>
+  <string name="connect_not_found_wifi">没找到电脑。请确认：① 电脑上的程序已经启动；② 手机和电脑连的是同一个 WiFi。\n如果都正常还是找不到，多半是这个 WiFi 开了「客户端隔离」（校园网、公司网常见）—— 这时候请让电脑连你的手机热点，再点「找电脑」。</string>
+  <string name="connect_not_found_hotspot">没找到电脑。请确认电脑上的程序已经启动，并且电脑连的是你这台手机的热点。</string>
+  <string name="connect_search_no_lan">你现在用的是移动数据（流量），电脑不在这个网络里，连不上。请连上电脑所在的 WiFi，或让电脑连你的手机热点。</string>
+  <string name="connect_search_no_ip">手机没有拿到局域网地址，先连上 WiFi 或打开手机热点再试。</string>
+  <string name="connect_discovered_label">自动发现</string>
+
   <string name="connect_online">在线 · 点一下就能用</string>
   <string name="connect_offline">离线 · 电脑没开，或它换了网络（地址会变，长按这条可以改）</string>
   <string name="connect_checking">正在检查…</string>
@@ -28,8 +48,11 @@
   <string name="connect_remove_message">将从列表里删掉「%1$s」。电脑上的文件不会受影响。</string>
   <string name="connect_remove_confirm">删除</string>
 
-  <!-- App 内浏览器 -->
+  <!-- App 内浏览器：三个操作并进「局域网文件柜」那一行（用户 2026-10-03 反馈"最顶部太突兀"） -->
   <string name="web_reload">刷新</string>
-  <string name="web_external">浏览器</string>
+  <string name="web_external">用系统浏览器打开</string>
   <string name="web_close">关闭</string>
+  <string name="web_reload_glyph">⟳</string>
+  <string name="web_external_glyph">🌐</string>
+  <string name="web_close_glyph">✕</string>
 </resources>

@@ -72,6 +72,9 @@ struct AppConfig {
 
   std::string jwt_secret;  // 生产环境必填；不得写入源码
   std::uint32_t jwt_expire_seconds{3600};
+  // 「记住我」勾上时的令牌有效期（默认 30 天，用户 2026-10-03）。
+  // 与前端 tokenStore 配合：勾了才把令牌放进 localStorage（跨 App/浏览器重启仍在）。
+  std::uint32_t jwt_remember_expire_seconds{30U * 24U * 60U * 60U};
 
   std::uint64_t download_rate_limit_bytes_per_second{0};  // 0 = 不限速
   std::vector<std::string> cors_allowed_origins{"http://localhost:5173"};

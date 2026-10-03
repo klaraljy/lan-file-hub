@@ -23,11 +23,14 @@ struct RegisterRequest {
   std::string username;
   std::string email;
   std::string password;
+  // 「记住我」（用户 2026-10-03）：勾了就发长效令牌（默认 30 天），见 AuthServiceOptions
+  bool remember{false};
 };
 
 struct LoginRequest {
   std::string identifier;  // 用户名或邮箱
   std::string password;
+  bool remember{false};
 };
 
 struct AuthResult {
@@ -38,6 +41,12 @@ struct AuthResult {
 
 struct AuthServiceOptions {
   std::uint64_t default_storage_quota_bytes{20ULL * 1024 * 1024 * 1024};
+  // 「记住我」勾上时的令牌有效期（默认 30 天）。
+  // 为什么要有它：手机 App 里每次打开都要求重新登录是**产品缺陷**（用户 2026-10-03 反馈），
+  // 而默认的 1 小时短令牌在"记住我"场景下没有意义 —— 两者配合才成立：
+  // 前端把令牌放进 localStorage（跨 App 重启还在），后端给它一个长期有效期。
+  // 没勾「记住我」时仍然用 JwtService 的默认短令牌（浏览器关掉即失效）。
+  std::uint32_t remember_expire_seconds{30U * 24U * 60U * 60U};
 };
 
 class AuthService {
@@ -63,7 +72,7 @@ class AuthService {
   [[nodiscard]] static Result<bool> ValidateEmail(std::string_view email);
 
  private:
-  [[nodiscard]] Result<AuthResult> IssueFor(const User& user) const;
+  [[nodiscard]] Result<AuthResult> IssueFor(const User& user, bool remember) const;
 
   UserRepository& users_;
   const PasswordHasher& hasher_;

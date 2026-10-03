@@ -72,14 +72,18 @@ Result<bool> AuthService::ValidateEmail(std::string_view email) {
   return true;
 }
 
-Result<AuthResult> AuthService::IssueFor(const User& user) const {
-  auto token = jwt_.Issue(user);
+Result<AuthResult> AuthService::IssueFor(const User& user, bool remember) const {
+  // 「记住我」= 长效令牌（默认 30 天）；否则用 JwtService 的默认短有效期。
+  // 有效期必须**同时**告诉客户端（expires_in_seconds），前端据此决定存储位置与提示语。
+  const std::uint32_t ttl = remember ? options_.remember_expire_seconds : 0;
+  auto token = jwt_.Issue(user, ttl);
   if (!token) {
     return token.GetError();
   }
   AuthResult result;
   result.access_token = token.Value();
-  result.expires_in_seconds = jwt_.ExpiresInSeconds();
+  result.expires_in_seconds = remember ? static_cast<std::int64_t>(options_.remember_expire_seconds)
+                                       : jwt_.ExpiresInSeconds();
   result.user = user;
   return result;
 }
@@ -122,7 +126,7 @@ Result<AuthResult> AuthService::Register(const RegisterRequest& request) {
     }
   }
 
-  return IssueFor(created.Value());
+  return IssueFor(created.Value(), request.remember);
 }
 
 Result<AuthResult> AuthService::Login(const LoginRequest& request) {
@@ -150,7 +154,7 @@ Result<AuthResult> AuthService::Login(const LoginRequest& request) {
     return Error{"FORBIDDEN", "账号已被禁用"};
   }
 
-  return IssueFor(user);
+  return IssueFor(user, request.remember);
 }
 
 Result<User> AuthService::CurrentUser(std::string_view user_id) {

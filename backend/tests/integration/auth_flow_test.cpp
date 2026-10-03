@@ -2,6 +2,7 @@
 //
 // 数据库不可用、或 users 表还没建时，测试会明确跳过（GTEST_SKIP）而不是假装通过。
 // 设置环境变量 LAN_FILE_HUB_REQUIRE_DB=1 可让缺失的数据库变成失败（CI 用）。
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
@@ -56,6 +57,15 @@ Argon2Options FastOptions() {
   return options;
 }
 
+/** 「记住我」的长效令牌时长（用例里用一个好认的数字，别跟默认 1 小时混起来） */
+constexpr std::uint32_t kRememberSeconds = 7U * 24U * 60U * 60U;  // 7 天
+
+std::int64_t NowUnix() {
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
 // 测试夹具：连不上库或表不存在就跳过
 class AuthFlowTest : public ::testing::Test {
  protected:
@@ -71,8 +81,8 @@ class AuthFlowTest : public ::testing::Test {
     users_ = std::make_shared<UserRepository>(*pool_);
     hasher_ = std::make_shared<PasswordHasher>(FastOptions());
     jwt_ = std::make_shared<JwtService>(JwtOptions{kSecret, 3600, "lan-file-hub"});
-    auth_ = std::make_shared<AuthService>(*users_, *hasher_, *jwt_,
-                                          AuthServiceOptions{1024ULL * 1024 * 1024});
+    auth_ = std::make_shared<AuthService>(
+        *users_, *hasher_, *jwt_, AuthServiceOptions{1024ULL * 1024 * 1024, kRememberSeconds});
 
     // 表不存在（没跑迁移）时也跳过，并给出可操作的提示
     auto cleared = users_->DeleteAllForTesting();
@@ -121,6 +131,45 @@ TEST_F(AuthFlowTest, RegistersUserAndReturnsUsableToken) {
   const auto claims = jwt_->Verify(result.Value().access_token);
   ASSERT_TRUE(claims.Ok());
   EXPECT_EQ(claims.Value().user_id, result.Value().user.id);
+}
+
+// 「记住我」（用户 2026-10-03：手机 App 每次都要重登是缺陷）。
+// 勾了 → 长效令牌（这里配成 7 天）；没勾 → 默认的 1 小时短令牌。
+// 两个方向都要钉住：既不许多发长效令牌，也不许把"记住我"做成没效果的摆设。
+TEST_F(AuthFlowTest, RememberMeControlsTokenLifetime) {
+  RegisterRequest request = ValidRegister("remembered");
+  request.remember = true;
+  const auto remembered = auth_->Register(request);
+  ASSERT_TRUE(remembered.Ok()) << remembered.GetError().message;
+  EXPECT_EQ(remembered.Value().expires_in_seconds, static_cast<std::int64_t>(kRememberSeconds));
+
+  const auto long_claims = jwt_->Verify(remembered.Value().access_token);
+  ASSERT_TRUE(long_claims.Ok());
+  const std::int64_t long_left = long_claims.Value().expires_at_unix - NowUnix();
+  EXPECT_GT(long_left, static_cast<std::int64_t>(kRememberSeconds) - 60)
+      << "「记住我」的令牌必须真的活到配置的时长";
+
+  // 不勾「记住我」：还是默认的短令牌
+  const auto plain = auth_->Register(ValidRegister("plain"));
+  ASSERT_TRUE(plain.Ok()) << plain.GetError().message;
+  EXPECT_EQ(plain.Value().expires_in_seconds, 3600);
+  const auto plain_claims = jwt_->Verify(plain.Value().access_token);
+  ASSERT_TRUE(plain_claims.Ok());
+  EXPECT_LT(plain_claims.Value().expires_at_unix - NowUnix(), 3700);
+
+  // 登录这条路也要认这个开关（注册认了、登录不认是最容易漏的半截活）
+  LoginRequest login;
+  login.identifier = "remembered";
+  login.password = "correct-horse-battery";
+  login.remember = true;
+  const auto logged_in = auth_->Login(login);
+  ASSERT_TRUE(logged_in.Ok()) << logged_in.GetError().message;
+  EXPECT_EQ(logged_in.Value().expires_in_seconds, static_cast<std::int64_t>(kRememberSeconds));
+
+  login.remember = false;
+  const auto short_login = auth_->Login(login);
+  ASSERT_TRUE(short_login.Ok()) << short_login.GetError().message;
+  EXPECT_EQ(short_login.Value().expires_in_seconds, 3600);
 }
 
 TEST_F(AuthFlowTest, NeverPersistsOrReturnsPlaintextPassword) {

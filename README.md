@@ -443,9 +443,9 @@ ctest --preset debug
 | 项 | 当前做法 |
 |---|---|
 | 密码存储 | **Argon2id**（m=64 MiB、t=3、p=1，每次随机 16 字节盐），PHC 字符串入库；没有明文，响应里也不含 `password_hash` |
-| Token | 短期 **JWT（HS256）单 Token**，有效期由 `JWT_EXPIRE_SECONDS` 控制（默认 3600 秒） |
+| Token | 短期 **JWT（HS256）单 Token**，有效期由 `JWT_EXPIRE_SECONDS` 控制（默认 3600 秒）；勾了「记住我」时改用 `JWT_REMEMBER_EXPIRE_SECONDS`（默认 30 天） |
 | Token 传递 | `Authorization: Bearer <token>`，统一由认证过滤器校验 |
-| Token 保存（前端） | **内存 + sessionStorage**。**不使用 localStorage** —— 长期存储会放大 XSS 的后果 |
+| Token 保存（前端） | 默认**内存 + sessionStorage**（关掉即失效）；**只有勾选「记住我」**（默认勾上，用户 2026-10-03 要求"不要每次重登"）才写 `localStorage` —— 长期存储会放大 XSS 的后果，所以是显式勾选、公用电脑可取消 |
 | 失效策略 | 过期返回 `TOKEN_EXPIRED`；用户被禁用后，**即使 Token 未过期也会被拒绝**（过滤器每次复查用户状态）；登出由客户端丢弃 Token 完成 |
 | 密钥 | `JWT_SECRET` 只能来自环境变量，不写入源码、日志或仓库 |
 
@@ -528,7 +528,9 @@ cd frontend; npm test                  # 前端：Vitest，共 111 个用例
 - **前端缺分页控件**：列表只显示第一页（总数会提示），拖拽移动与分页在阶段十。
 - **管理员账号需要显式创建**：注册页只创建普通用户，第一个管理员用 `.\scripts\create-admin.ps1`
   （或桌面菜单按 5）创建——用户名已存在时是**提升为 ADMIN**，不改口令。方式见「快速开始 8」。
-- **Token 放在 sessionStorage**：生产部署前必须改为 HttpOnly Cookie，见上文「认证与 Token 策略」。
+- **Token 保存分两种**：不勾「记住我」时只进 `sessionStorage`（关掉即失效）；勾了才进
+  `localStorage` 并用 30 天长效令牌。生产部署前整体仍应改为 HttpOnly Cookie，
+  见上文「认证与 Token 策略」。
 - **下载限速默认关闭**：`DOWNLOAD_RATE_LIMIT=0` 表示不限速（局域网场景按带宽优先）。开启后按用户做字节级令牌桶限速，
   代价是该路径改为 chunked 传输、没有 `Content-Length`（Range 仍可用）；细节见 `docs/storage.md`「下载限速」。
 - **镜像构建耗时**：后端镜像要在 Linux 容器里从源码编译整套 C++ 依赖（Drogon/OpenSSL/libpqxx…），首次构建很久（本机实测约 40 分钟）；

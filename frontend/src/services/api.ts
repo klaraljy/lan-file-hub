@@ -85,21 +85,24 @@ export const authApi = {
     password: string,
     /** 邀请制注册：管理员发的邀请 token（关闭自助注册时必填） */
     inviteToken?: string,
+    /** 「记住我」（2026-10-03）：true 时后端发长效令牌，前端存 localStorage */
+    remember = true,
   ): Promise<AuthPayload> {
     const response = await http.post<ApiEnvelope<AuthPayload>>('/auth/register', {
       username,
       email,
       password,
+      remember,
       ...(inviteToken ? { invite_token: inviteToken } : {}),
     });
     return unwrap(response.data);
   },
 
-  async login(identifier: string, password: string): Promise<AuthPayload> {
+  async login(identifier: string, password: string, remember = true): Promise<AuthPayload> {
     // 后端的 identifier 走 username 字段；带 @ 时按邮箱处理
     const payload = identifier.includes('@')
-      ? { email: identifier, password }
-      : { username: identifier, password };
+      ? { email: identifier, password, remember }
+      : { username: identifier, password, remember };
     const response = await http.post<ApiEnvelope<AuthPayload>>('/auth/login', payload);
     return unwrap(response.data);
   },
