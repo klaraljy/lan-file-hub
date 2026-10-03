@@ -33,6 +33,11 @@ class FolderRepository {
 
   [[nodiscard]] Result<std::uint64_t> CountChildren(std::string_view parent_id);
 
+  // 按名字搜索自己的有效文件夹（2026-10-03，搜索功能）。
+  // query 是**原始关键字**（子串匹配），通配符转义在仓储内部完成。
+  [[nodiscard]] Result<std::vector<Folder>> SearchByOwner(std::string_view owner_id,
+                                                          std::string_view query, int limit);
+
   // 取祖先链（含自身），按从根到自身排序。
   // 实现：任何祖先的 path_key 都是自身 path_key 的前缀，一条 LIKE 就能取全。
   [[nodiscard]] Result<std::vector<Folder>> ListAncestors(std::string_view folder_path_key);

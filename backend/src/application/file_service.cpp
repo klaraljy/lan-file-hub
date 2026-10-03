@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 
 #include "lan_file_hub/application/folder_service.h"
+#include "lan_file_hub/common/sql_like.h"
 #include "lan_file_hub/common/uuid.h"
 
 namespace lan_file_hub {
@@ -14,6 +15,11 @@ namespace {
 Error NotFound() {
   return Error{"RESOURCE_NOT_FOUND", "文件不存在"};
 }
+
+// 搜索（2026-10-03）：关键字长度上限与"最多回几个文件夹"。
+// 文件夹不分页，但不能没有上限 —— 否则用户搜一个常见字会把整个目录树拉回去。
+constexpr std::size_t kMaxSearchQueryLength = 100;
+constexpr int kMaxSearchFolders = 20;
 
 }  // namespace
 
@@ -272,8 +278,7 @@ Result<FileListing> FileService::ListInFolder(const Actor& actor, std::string_vi
 
 Result<RecentListing> FileService::ListRecent(const Actor& actor, const Pagination& pagination) {
   // 只列自己的文件：不需要权限检查（不是别人的资源），但必须带着 owner 过滤，别越界
-  auto listed =
-      files_.ListRecentByOwner(actor.user_id, pagination.page_size, pagination.Offset());
+  auto listed = files_.ListRecentByOwner(actor.user_id, pagination.page_size, pagination.Offset());
   if (!listed) {
     return listed.GetError();
   }
@@ -287,6 +292,44 @@ Result<RecentListing> FileService::ListRecent(const Actor& actor, const Paginati
   listing.total = total.Value();
   listing.page = pagination.page;
   listing.page_size = pagination.page_size;
+  return listing;
+}
+
+Result<SearchListing> FileService::Search(const Actor& actor, std::string_view query,
+                                          const Pagination& pagination) {
+  // 关键字校验：空串直接拒绝（前端的搜索框为空时不该发请求；发了也给一句人话）
+  const std::string trimmed = TrimForSearch(query);
+  if (trimmed.empty()) {
+    return Error{"INVALID_ARGUMENT", "请输入要搜索的关键字"};
+  }
+  if (trimmed.size() > kMaxSearchQueryLength) {
+    return Error{"INVALID_ARGUMENT",
+                 "关键字太长（最多 " + std::to_string(kMaxSearchQueryLength) + " 个字符）"};
+  }
+
+  // 只搜自己的：不需要权限检查（不是别人的资源），但必须带 owner 过滤，别越界
+  auto matched =
+      files_.SearchByOwner(actor.user_id, trimmed, pagination.page_size, pagination.Offset());
+  if (!matched) {
+    return matched.GetError();
+  }
+  auto total = files_.CountSearchByOwner(actor.user_id, trimmed);
+  if (!total) {
+    return total.GetError();
+  }
+  // 文件夹一并返回（数量少、不分页）：搜一个词，文件和目录都能直达
+  auto folders = folders_.SearchByOwner(actor.user_id, trimmed, kMaxSearchFolders);
+  if (!folders) {
+    return folders.GetError();
+  }
+
+  SearchListing listing;
+  listing.files = std::move(matched.Value());
+  listing.folders = std::move(folders.Value());
+  listing.total = total.Value();
+  listing.page = pagination.page;
+  listing.page_size = pagination.page_size;
+  listing.query = trimmed;
   return listing;
 }
 

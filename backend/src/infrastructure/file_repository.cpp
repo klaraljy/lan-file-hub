@@ -3,6 +3,7 @@
 #include <pqxx/pqxx>
 
 #include "infrastructure/database_error.h"
+#include "lan_file_hub/common/sql_like.h"
 
 namespace lan_file_hub {
 namespace {
@@ -683,14 +684,14 @@ Result<std::vector<FileRepository::RecentFile>> FileRepository::ListRecentByOwne
     // ⛔ 不要 JOIN folders：kFileColumns 里的列名没有表别名（`id, owner_id, ...`），
     //    join 进来另一张也有 `id` 的表会直接报「字段关联 "id" 是不明确的」（实测踩到）。
     //    用相关子查询取文件夹名，既不歧义也不用改公共的 kFileColumns。
-    const pqxx::result rows = tx.exec(
-        "SELECT " + std::string(kFileColumns) +
-            ", COALESCE((SELECT name FROM folders WHERE folders.id = f.folder_id), '') "
-            "  AS folder_name "
-            "FROM files f "
-            "WHERE f.owner_id = $1::uuid AND f.status = 'ACTIVE' "
-            "ORDER BY f.updated_at DESC, f.id LIMIT $2 OFFSET $3",
-        params);
+    const pqxx::result rows =
+        tx.exec("SELECT " + std::string(kFileColumns) +
+                    ", COALESCE((SELECT name FROM folders WHERE folders.id = f.folder_id), '') "
+                    "  AS folder_name "
+                    "FROM files f "
+                    "WHERE f.owner_id = $1::uuid AND f.status = 'ACTIVE' "
+                    "ORDER BY f.updated_at DESC, f.id LIMIT $2 OFFSET $3",
+                params);
     tx.commit();
 
     std::vector<RecentFile> recent;
@@ -725,6 +726,69 @@ Result<std::uint64_t> FileRepository::CountRecentByOwner(std::string_view owner_
     return static_cast<std::uint64_t>(rows[0]["total"].as<std::int64_t>());
   } catch (const std::exception& ex) {
     return DatabaseError(ex, "统计最近文件失败");
+  }
+}
+
+Result<std::vector<FileRepository::RecentFile>> FileRepository::SearchByOwner(
+    std::string_view owner_id, std::string_view query, int limit, int offset) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(owner_id));
+    params.append(LikeContains(query));
+    params.append(limit);
+    params.append(offset);
+    // 与 ListRecentByOwner 同一套规则（自己的、ACTIVE、带文件夹名、不 JOIN folders），
+    // 只是多一个大小写不敏感的子串条件；顺序按相关性没法算，用"最近改过的在前"。
+    const pqxx::result rows =
+        tx.exec("SELECT " + std::string(kFileColumns) +
+                    ", COALESCE((SELECT name FROM folders WHERE folders.id = f.folder_id), '') "
+                    "  AS folder_name "
+                    "FROM files f "
+                    "WHERE f.owner_id = $1::uuid AND f.status = 'ACTIVE' "
+                    "  AND f.original_name ILIKE $2 ESCAPE '\\' "
+                    "ORDER BY f.updated_at DESC, f.id LIMIT $3 OFFSET $4",
+                params);
+    tx.commit();
+
+    std::vector<RecentFile> matches;
+    matches.reserve(rows.size());
+    for (const auto& row : rows) {
+      RecentFile item;
+      item.file = FileFromRow(row);
+      item.folder_id = item.file.folder_id;
+      item.folder_name = row["folder_name"].as<std::string>();
+      matches.push_back(std::move(item));
+    }
+    return matches;
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "搜索文件失败");
+  }
+}
+
+Result<std::uint64_t> FileRepository::CountSearchByOwner(std::string_view owner_id,
+                                                         std::string_view query) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(owner_id));
+    params.append(LikeContains(query));
+    const pqxx::result rows = tx.exec(
+        "SELECT count(*)::bigint AS total FROM files "
+        "WHERE owner_id = $1::uuid AND status = 'ACTIVE' AND original_name ILIKE $2 ESCAPE '\\'",
+        params);
+    tx.commit();
+    return static_cast<std::uint64_t>(rows[0]["total"].as<std::int64_t>());
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "统计搜索结果失败");
   }
 }
 

@@ -11,16 +11,17 @@ import {
 } from '../src/app/navigation';
 
 /**
- * 左侧导航是六个入口（阶段 ⑤ 加了「广场」），高亮规则必须稳定：
+ * 左侧导航是七个入口（阶段 ⑤ 加了「广场」，2026-10-03 加了「搜索」），高亮规则必须稳定：
  * 目录详情页也要算「我的文件」，前缀相近的路径不能被误判。
  */
 describe('selectedNavKey', () => {
-  it('六个入口本身都能高亮自己', () => {
+  it('七个入口本身都能高亮自己', () => {
     for (const item of MAIN_NAV_ITEMS) {
       expect(selectedNavKey(item.key)).toBe(item.key);
     }
     expect(MAIN_NAV_ITEMS.map((item) => item.key)).toEqual([
       '/files',
+      '/search',
       '/plaza',
       '/recent',
       '/shared',
@@ -68,6 +69,7 @@ describe('navItemsForRole', () => {
     const items = navItemsForRole('ADMIN');
     expect(items.map((item) => item.key)).toEqual([
       '/files',
+      '/search',
       '/plaza',
       '/recent',
       '/shared',

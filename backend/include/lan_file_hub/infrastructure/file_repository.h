@@ -83,6 +83,16 @@ class FileRepository {
                                                                   int limit, int offset);
   [[nodiscard]] Result<std::uint64_t> CountRecentByOwner(std::string_view owner_id);
 
+  // 按文件名搜索**自己的**有效文件（2026-10-03，用户要求：文件一多就得能搜）。
+  // 规则与「最近文件」一致（只看自己的、排除回收站、带所在文件夹名），
+  // 只是多一个大小写不敏感的子串条件；查询里的 % 与 _ 会被转义成字面量，
+  // 不能让用户输入的 % 变成"匹配全部"。
+  [[nodiscard]] Result<std::vector<RecentFile>> SearchByOwner(std::string_view owner_id,
+                                                              std::string_view query, int limit,
+                                                              int offset);
+  [[nodiscard]] Result<std::uint64_t> CountSearchByOwner(std::string_view owner_id,
+                                                         std::string_view query);
+
   [[nodiscard]] Result<std::uint64_t> SumSizeByOwner(std::string_view owner_id);
 
   // 阶段十一（定期校准）：按「所有文件版本大小之和」重算**全部**用户的 used_storage_bytes，

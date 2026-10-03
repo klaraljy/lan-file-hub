@@ -13,6 +13,7 @@ add_library(lan_file_hub_core STATIC
   src/common/rate_limiter.cpp
   src/common/request_id.cpp
   src/common/sha256.cpp
+  src/common/sql_like.cpp
   src/common/uuid.cpp
   # domain
   src/domain/entry_name.cpp

@@ -647,7 +647,10 @@ DELETE /api/v1/uploads/{upload_id}
 - `size_bytes` 必填（`0` 合法，表示空文件）；超过单文件上限返回 `400 INVALID_ARGUMENT`。
 - `sha256` 可选；提供时必须是 64 位小写十六进制，否则 `400 INVALID_ARGUMENT`。
 - 目标目录不存在或无写权限返回 `404 FOLDER_NOT_FOUND`（不区分「不存在」与「无权限」）。
-- 同目录已有同名文件返回 `409 RESOURCE_CONFLICT`（在会话创建阶段就拦住，避免传完几十 GB 才报错）。
+- 同目录已有同名文件时**自动改名**（`报告.pdf` → `报告 (1).pdf` → `报告 (2).pdf`…）并照常创建会话
+  —— 用户 2026-10-03 明确要求"相同名字的文件加一个 (1)"；判重会同时看 `files` 表里已存在的
+  文件**和**还没结束的上传会话（否则连着建多个会话会都拿到 `(1)`）。排在 `(50)` 之后才报
+  `409 RESOURCE_CONFLICT`。见「同名文件处理」。
 - 并发上传超过用户级或全局上限返回 `503 STORAGE_BUSY`。
 - 超出存储配额返回 `409 QUOTA_EXCEEDED`（这里的判定用客户端声明的大小，只为止损）。
 - 会话有有效期（默认 24 小时，`UPLOAD_SESSION_TTL` 可配），过期后不能继续上传分块。
@@ -948,6 +951,42 @@ GET /api/v1/system/network
 - `request_host` 是客户端请求时带的 `Host`（`127.0.0.1:9180` / 局域网 IP / 域名），仅用于排查。
 - 前端拿到后拼 `http://<lan_address>:<当前页面端口>`（便携包 9180、开发 5173），
   见 `frontend/src/services/publicUrl.ts` 与 `networkApi.ts`。
+
+## 搜索端点（2026-10-03 新增）
+
+```text
+GET /api/v1/search?q=<关键字>&page=&page_size=
+```
+
+按**名字**搜自己的文件与文件夹（用户要求："文件一多就得能找到东西"）。
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "uuid", "name": "季度报表.xlsx", "size_bytes": 20480,
+        "mime_type": "application/vnd.ms-excel", "updated_at": "2026-10-03T03:00:00Z",
+        "folder_id": "uuid", "folder_name": "2026 报表"
+      }
+    ],
+    "folders": [{ "id": "uuid", "name": "2026 报表", "parent_id": "uuid" }],
+    "total": 1, "page": 1, "page_size": 50, "query": "报表"
+  },
+  "request_id": "uuid"
+}
+```
+
+- **只搜自己的**：强制 `owner_id` 过滤；别人的文件与「分享给我的」都不在这个接口里
+  （后者见「分享给我的」相关端点）。
+- **排除回收站**：只匹配 `status = 'ACTIVE'`，口径与「最近文件」一致；`total` 也只算匹配到的。
+- 大小写不敏感的子串匹配（`ILIKE`）；⛔ 关键字里的 `%` 与 `_` 会被转义成**普通字符**
+  —— 搜 `%` 不会变成"匹配全部"（有集成测试守着）。
+- 关键字：必填，首尾空白会被去掉，上限 100 字符；空串或过长返回 `400 INVALID_ARGUMENT`。
+- `items` 是**文件**（分页，`1 <= page_size <= 100`），`folders` 是**文件夹**（最多 20 个、不分页，
+  够用户直接跳进去）；两者都带"在哪个文件夹"。
+- 路径刻意**不放在 `/api/v1/files/...` 下面**：那会与 `/api/v1/files/{file_id}` 抢匹配
+  （「最近文件」当初也是为此独立成 `/api/v1/recent-files`）。
 
 ## 配套手机应用端点（安卓安装包，2026-10-03 新增）
 

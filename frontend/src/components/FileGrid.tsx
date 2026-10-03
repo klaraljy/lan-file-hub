@@ -9,6 +9,7 @@ import { Button, Card, Col, Empty, Popconfirm, Row, Space, Tooltip, Typography }
 import {
   DeleteOutlined,
   DownloadOutlined,
+  EyeOutlined,
   FileOutlined,
   FolderOutlined,
   HistoryOutlined,
@@ -25,6 +26,8 @@ interface Props {
   onOpenFolder: (row: Extract<BrowseRow, { kind: 'folder' }>) => void;
   onDownload: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onDetail: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
+  /** 预览（2026-10-03）：图片/PDF/文本在网页里直接看 */
+  onPreview: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onVersions: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onShare: (row: BrowseRow) => void;
   /** 「发送给…」：按人发送（AGENTS.md §14.3） */
@@ -37,6 +40,7 @@ export function FileGrid({
   onOpenFolder,
   onDownload,
   onDetail,
+  onPreview,
   onVersions,
   onShare,
   onSend,
@@ -114,6 +118,17 @@ export function FileGrid({
                         onClick={(event) => {
                           event.stopPropagation();
                           onDownload(row);
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="预览">
+                      <Button
+                        type="text"
+                        {...iconButtonProps}
+                        icon={<EyeOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onPreview(row);
                         }}
                       />
                     </Tooltip>

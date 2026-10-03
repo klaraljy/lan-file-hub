@@ -14,7 +14,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
-  FileOutlined,
+  EyeOutlined,
   FolderOpenOutlined,
   FolderOutlined,
   HistoryOutlined,
@@ -26,6 +26,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 
+import { FileThumbnail } from './FileThumbnail';
 import { formatBytes, typeLabel, type BrowseRow } from '../features/files/listView';
 import { TOUCH_HEIGHT } from '../hooks/useIsMobile';
 
@@ -35,6 +36,8 @@ interface Props {
   onRename: (row: Extract<BrowseRow, { kind: 'folder' }>) => void;
   onDownload: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onDetail: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
+  /** 预览（2026-10-03）：图片/PDF/文本在网页里直接看 */
+  onPreview: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onVersions: (row: Extract<BrowseRow, { kind: 'file' }>) => void;
   onShare: (row: BrowseRow) => void;
   /** 权限管理（选人授权） */
@@ -50,6 +53,7 @@ export function FileCardList({
   onRename,
   onDownload,
   onDetail,
+  onPreview,
   onVersions,
   onShare,
   onPermission,
@@ -86,6 +90,7 @@ export function FileCardList({
     const items: MenuProps['items'] =
       row.kind === 'file'
         ? [
+            { key: 'preview', icon: <EyeOutlined />, label: '预览' },
             { key: 'download', icon: <DownloadOutlined />, label: '下载' },
             { key: 'detail', icon: <InfoCircleOutlined />, label: '详情' },
             { key: 'versions', icon: <HistoryOutlined />, label: '版本历史' },
@@ -105,6 +110,7 @@ export function FileCardList({
 
   function handleMore(row: BrowseRow, key: string) {
     if (row.kind === 'file') {
+      if (key === 'preview') onPreview(row);
       if (key === 'download') onDownload(row);
       if (key === 'detail') onDetail(row);
       if (key === 'versions') onVersions(row);
@@ -130,13 +136,19 @@ export function FileCardList({
           onClick={() => (row.kind === 'folder' ? onOpenFolder(row) : onDetail(row))}
         >
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 24, lineHeight: '30px' }}>
-              {row.kind === 'folder' ? (
+            {/* 图片给缩略图（2026-10-03），其余类型保持图标：列表里几十个文件不能都去换票据 */}
+            {row.kind === 'file' ? (
+              <FileThumbnail
+                fileId={row.file.id}
+                fileName={row.name}
+                mimeType={row.file.mime_type}
+                size={40}
+              />
+            ) : (
+              <span style={{ fontSize: 24, lineHeight: '30px' }}>
                 <FolderOutlined style={{ color: '#faad14' }} />
-              ) : (
-                <FileOutlined style={{ color: '#8c8c8c' }} />
-              )}
-            </span>
+              </span>
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <Typography.Text
                 strong

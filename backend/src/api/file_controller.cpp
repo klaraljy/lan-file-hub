@@ -252,6 +252,59 @@ void FileController::Recent(const drogon::HttpRequestPtr& req,
       CurrentRequestId()));
 }
 
+// 搜索（2026-10-03）：`GET /api/v1/search?q=关键字&page=&page_size=`
+// 文件分页返回，文件夹一并带上（少量、不分页）。
+void FileController::Search(const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+  const auto context = GetAppContext();
+  if (!context) {
+    RespondError(callback, Error{"INTERNAL_ERROR", "服务未初始化"});
+    return;
+  }
+
+  auto pagination = ParsePagination(req->getParameter("page"), req->getParameter("page_size"),
+                                    req->getParameter("sort_by"), req->getParameter("sort_order"));
+  if (!pagination) {
+    RespondError(callback, pagination.GetError());
+    return;
+  }
+
+  auto listing =
+      context->files_service->Search(ActorFrom(req), req->getParameter("q"), pagination.Value());
+  if (!listing) {
+    RespondError(callback, listing.GetError());
+    return;
+  }
+
+  nlohmann::json items = nlohmann::json::array();
+  for (const auto& match : listing.Value().files) {
+    nlohmann::json item = FileToJson(match.file);
+    item["folder_id"] = match.folder_id;
+    item["folder_name"] = match.folder_name;
+    items.push_back(std::move(item));
+  }
+  // 文件夹：只给"去哪儿"，够前端跳转了（名字 + 父目录 id）
+  nlohmann::json folders = nlohmann::json::array();
+  for (const auto& folder : listing.Value().folders) {
+    folders.push_back(nlohmann::json{
+        {"id", folder.id},
+        {"name", folder.name},
+        {"parent_id", folder.parent_id.value_or("")},
+    });
+  }
+
+  callback(MakeSuccessResponse(
+      nlohmann::json{
+          {"items", std::move(items)},
+          {"folders", std::move(folders)},
+          {"total", listing.Value().total},
+          {"page", listing.Value().page},
+          {"page_size", listing.Value().page_size},
+          {"query", listing.Value().query},
+      },
+      CurrentRequestId()));
+}
+
 void FileController::Metadata(const drogon::HttpRequestPtr& req,
                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                               std::string file_id) {

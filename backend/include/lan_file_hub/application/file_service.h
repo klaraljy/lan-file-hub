@@ -55,6 +55,21 @@ struct RecentListing {
   int page_size{kDefaultPageSize};
 };
 
+/**
+ * 搜索结果（2026-10-03，用户要求：文件一多就得能搜）。
+ *
+ * 文件按名字模糊匹配、**分页**；文件夹也一起给（数量少、不分页），
+ * 这样用户搜一个词既能看到文件也能看到目录，两边都能直达。
+ */
+struct SearchListing {
+  std::vector<FileRepository::RecentFile> files;
+  std::vector<Folder> folders;
+  std::uint64_t total{0};  // 只统计文件（文件夹另算，见 folders.size()）
+  int page{1};
+  int page_size{kDefaultPageSize};
+  std::string query;
+};
+
 struct FileDownload {
   File file;
   std::string absolute_path;  // 交给 HTTP 层做流式响应
@@ -122,6 +137,10 @@ class FileService {
   /** 最近文件（2026-10-03）：跨目录列出自己的有效文件，按更新时间倒序。
    *  只列**自己拥有**的文件 —— 别人分享给你的在「分享给我的」里，两处职责不混。 */
   [[nodiscard]] Result<RecentListing> ListRecent(const Actor& actor, const Pagination& pagination);
+
+  // 按名字搜索（自己的文件与文件夹）
+  [[nodiscard]] Result<SearchListing> Search(const Actor& actor, std::string_view query,
+                                             const Pagination& pagination);
 
   [[nodiscard]] Result<File> GetMetadata(const Actor& actor, std::string_view file_id);
 

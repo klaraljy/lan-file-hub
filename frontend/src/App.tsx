@@ -11,6 +11,7 @@ import { MyPage } from './pages/MyPage';
 import { PlazaPage } from './pages/PlazaPage';
 import { PublicSharePage } from './pages/PublicSharePage';
 import { RecentPage } from './pages/RecentPage';
+import { SearchPage } from './pages/SearchPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SharedWithMePage } from './pages/SharedWithMePage';
@@ -86,6 +87,8 @@ export default function App() {
         {/* 广场：谁在线、直接发文件给他（阶段 ⑤） */}
         <Route path="/plaza" element={<PlazaPage />} />
         <Route path="/recent" element={<RecentPage />} />
+        {/* 搜索（2026-10-03）：按名字搜自己的文件与文件夹 */}
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/shared" element={<SharedWithMePage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/settings" element={<SettingsPage />} />

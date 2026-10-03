@@ -18,6 +18,7 @@ import {
   LogoutOutlined,
   QrcodeOutlined,
   RightOutlined,
+  SearchOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
@@ -138,6 +139,12 @@ export function MyPage() {
   const navigate = useNavigate();
 
   const entries: Entry[] = [
+    {
+      key: '/search',
+      label: '搜索',
+      hint: '按名字找文件或文件夹（所有文件夹一起搜）',
+      icon: <SearchOutlined />,
+    },
     {
       key: '/recent',
       label: '最近文件',

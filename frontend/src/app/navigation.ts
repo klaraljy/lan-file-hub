@@ -9,11 +9,13 @@ export interface NavItem {
   key: string;
   label: string;
   /** 菜单项对应的图标名，由 AppLayout 映射成组件（这里不引入 React，保持纯数据） */
-  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin' | 'plaza';
+  icon: 'folder' | 'clock' | 'share' | 'delete' | 'setting' | 'admin' | 'plaza' | 'search';
 }
 
 export const MAIN_NAV_ITEMS: readonly NavItem[] = [
   { key: '/files', label: '我的文件', icon: 'folder' },
+  // 搜索（2026-10-03，用户要求：文件一多就得能找到东西）
+  { key: '/search', label: '搜索', icon: 'search' },
   // 广场：谁在线、直接发文件给他（阶段 ⑤，用户 2026-09-21 要求）
   { key: '/plaza', label: '广场', icon: 'plaza' },
   { key: '/recent', label: '最近文件', icon: 'clock' },

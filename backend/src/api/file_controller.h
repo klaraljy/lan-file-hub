@@ -30,6 +30,9 @@ class FileController : public drogon::HttpController<FileController> {
   // 「最近文件」（2026-10-03）：跨目录按更新时间列出自己的文件。
   // ⛔ 刻意用独立路径而不是 /api/v1/files/recent：后者会和 /api/v1/files/{file_id} 抢匹配。
   ADD_METHOD_TO(FileController::Recent, "/api/v1/recent-files", drogon::Get, "AuthFilter");
+  // 搜索（2026-10-03）：按名字搜自己的文件与文件夹。
+  // 同样不放在 /api/v1/files/... 下面，理由与上一条相同。
+  ADD_METHOD_TO(FileController::Search, "/api/v1/search", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(FileController::Metadata, "/api/v1/files/{file_id}", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(FileController::Download, "/api/v1/files/{file_id}/download", drogon::Get,
                 "AuthFilter");
@@ -57,6 +60,10 @@ class FileController : public drogon::HttpController<FileController> {
 
   /** 最近文件（跨目录，按更新时间倒序；只列自己的有效文件） */
   void Recent(const drogon::HttpRequestPtr& req,
+              std::function<void(const drogon::HttpResponsePtr&)>&& callback);
+
+  /** 搜索（按名字模糊匹配自己的文件与文件夹；`?q=` 必填） */
+  void Search(const drogon::HttpRequestPtr& req,
               std::function<void(const drogon::HttpResponsePtr&)>&& callback);
 
   void Metadata(const drogon::HttpRequestPtr& req,

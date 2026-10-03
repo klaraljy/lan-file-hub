@@ -33,23 +33,27 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  EyeOutlined,
   FileOutlined,
   FolderOutlined,
   HistoryOutlined,
   InfoCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
   SendOutlined,
   ShareAltOutlined,
   SortAscendingOutlined,
   TeamOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import { canPreview } from '../services/filePreview';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { FileCardList } from '../components/FileCardList';
 import { FileDetailDrawer } from '../components/FileDetailDrawer';
 import { FileGrid } from '../components/FileGrid';
+import { FilePreviewModal } from '../components/FilePreviewModal';
 import { FolderBreadcrumb } from '../components/FolderBreadcrumb';
 import { PermissionDialog } from '../components/PermissionDialog';
 import { ResponsiveSheet } from '../components/ResponsiveSheet';
@@ -110,6 +114,8 @@ export function FilesPage() {
   const [editor, setEditor] = useState<EditorMode>(null);
   const [versionTarget, setVersionTarget] = useState<FileMeta | null>(null);
   const [detailTarget, setDetailTarget] = useState<FileMeta | null>(null);
+  // 预览（2026-10-03）：图片/PDF/文本直接在网页里看
+  const [previewTarget, setPreviewTarget] = useState<FileMeta | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareTarget>(null);
   const [permTarget, setPermTarget] = useState<ShareTarget>(null);
   // 「发送给…」的目标（按人发送，AGENTS.md §14.3）
@@ -290,6 +296,16 @@ export function FilesPage() {
               >
                 下载
               </Button>
+              {canPreview(row.file.mime_type, row.file.name) && (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => setPreviewTarget(row.file)}
+                >
+                  预览
+                </Button>
+              )}
               <Button
                 type="link"
                 size="small"
@@ -401,16 +417,25 @@ export function FilesPage() {
     },
   ];
 
-  // 过滤当前页：真正的服务端搜索属于后续阶段（见文件头说明）。
-  // 手机上它固定在顶部（滚动时也能随时过滤），桌面端留在工具栏里。
+  // 过滤当前页 + 一个「全局搜索」出口（2026-10-03）：这里只过滤当前文件夹，
+  // 用户找不到东西时最需要的是"在所有文件夹里搜" —— 把当前关键字带过去，不用重打。
   const searchBox = (
-    <Input.Search
-      allowClear
-      placeholder="在当前页中按名称过滤"
-      style={{ width: isMobile ? '100%' : 240 }}
-      value={keyword}
-      onChange={(event) => setKeyword(event.target.value)}
-    />
+    <Space.Compact style={{ width: isMobile ? '100%' : 'auto' }}>
+      <Input.Search
+        allowClear
+        placeholder="在当前文件夹里过滤"
+        style={{ width: isMobile ? '100%' : 240 }}
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+      />
+      <Button
+        icon={<SearchOutlined />}
+        title="在所有文件夹里搜索"
+        onClick={() => navigate(keyword.trim() ? `/search?q=${encodeURIComponent(keyword.trim())}` : '/search')}
+      >
+        {isMobile ? '' : '全局搜索'}
+      </Button>
+    </Space.Compact>
   );
 
   return (
@@ -524,6 +549,7 @@ export function FilesPage() {
           onRename={(row) => openRename(row.folder)}
           onDownload={(row) => void handleDownload(row.file)}
           onDetail={(row) => setDetailTarget(row.file)}
+        onPreview={(row) => setPreviewTarget(row.file)}
           onVersions={(row) => setVersionTarget(row.file)}
           onShare={(row) =>
             setShareTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
@@ -565,6 +591,7 @@ export function FilesPage() {
           onOpenFolder={(row) => navigate(`/files/${row.folder.id}`)}
           onDownload={(row) => void handleDownload(row.file)}
           onDetail={(row) => setDetailTarget(row.file)}
+        onPreview={(row) => setPreviewTarget(row.file)}
           onVersions={(row) => setVersionTarget(row.file)}
           onShare={(row) =>
             setShareTarget(row.kind === 'file' ? { file: row.file } : { folder: row.folder })
@@ -586,6 +613,17 @@ export function FilesPage() {
         )}
 
       {/* 文件详情抽屉：三个弹窗仍由本页持有，抽屉只是入口 */}
+      <FilePreviewModal
+        open={previewTarget !== null}
+        fileId={previewTarget?.id ?? ''}
+        fileName={previewTarget?.name ?? ''}
+        mimeType={previewTarget?.mime_type}
+        onDownload={() => {
+          if (previewTarget) void handleDownload(previewTarget);
+        }}
+        onClose={() => setPreviewTarget(null)}
+      />
+
       <FileDetailDrawer
         file={detailTarget}
         open={detailTarget !== null}

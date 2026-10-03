@@ -16,6 +16,7 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   FolderOutlined,
+  SearchOutlined,
   SettingOutlined,
   ShareAltOutlined,
   TeamOutlined,
@@ -34,6 +35,7 @@ const { Header, Sider, Content } = Layout;
 
 const ICONS: Record<NavItem['icon'], ReactNode> = {
   folder: <FolderOutlined />,
+  search: <SearchOutlined />,
   clock: <ClockCircleOutlined />,
   share: <ShareAltOutlined />,
   delete: <DeleteOutlined />,

@@ -2,6 +2,7 @@
 
 #include <pqxx/pqxx>
 
+#include "lan_file_hub/common/sql_like.h"
 #include "lan_file_hub/common/uuid.h"
 
 #include "infrastructure/database_error.h"
@@ -179,6 +180,40 @@ Result<std::vector<Folder>> FolderRepository::ListChildren(std::string_view pare
     return folders;
   } catch (const std::exception& ex) {
     return DatabaseError(ex, "查询子目录失败");
+  }
+}
+
+// 按名字搜索自己的有效文件夹（2026-10-03，搜索功能）。
+// 只搜自己的、只搜 ACTIVE（回收站里的不出现）；query 是**原始关键字**，
+// 通配符由这里用公共助手转义（搜 `%` 不会变成"匹配全部"）。
+Result<std::vector<Folder>> FolderRepository::SearchByOwner(std::string_view owner_id,
+                                                            std::string_view query, int limit) {
+  auto lease = pool_.Acquire();
+  if (!lease) {
+    return Error{"STORAGE_UNAVAILABLE", "数据库繁忙，请稍后重试"};
+  }
+  try {
+    pqxx::work tx(lease->connection());
+    pqxx::params params;
+    params.append(std::string(owner_id));
+    params.append(LikeContains(query));
+    params.append(limit);
+    const pqxx::result rows =
+        tx.exec("SELECT " + std::string(kSelectColumns) +
+                    " FROM folders f WHERE f.owner_id = $1::uuid AND f.status = 'ACTIVE' "
+                    "AND f.name ILIKE $2 ESCAPE '\\' "
+                    "ORDER BY f.updated_at DESC, f.id LIMIT $3",
+                params);
+    tx.commit();
+
+    std::vector<Folder> folders;
+    folders.reserve(rows.size());
+    for (const auto& row : rows) {
+      folders.push_back(FolderFromRow(row));
+    }
+    return folders;
+  } catch (const std::exception& ex) {
+    return DatabaseError(ex, "搜索文件夹失败");
   }
 }
 
