@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-10-03T04:31:28Z",
+  "app": "lan-file-hub portable",
+  "database": {
+    "migrations": "0001_create_users,0002_create_folders,0003_create_files,0004_create_uploads,0005_dedup_and_quota,0006_file_versions,0007_trash_and_cleanup,0008_permissions_and_shares,0009_presence,0010_invites,0011_share_passwords",
+    "file": "database.dump",
+    "name": "lanfilehub",
+    "sha256": "dd0e18f25d93a992419f14ce1fac7051b2708b4f7cd63e258f3d371863bd13d7",
+    "counts": "users=3 files=2 folders=3",
+    "size": 42491
+  },
+  "storage": {
+    "size": 353280,
+    "sha256": "6642dcc538a40a80f33a10a11164a15bb50bbcc09703bba139121b57753e871a",
+    "root": "data/storage",
+    "file": "storage.tar"
+  }
+}
