@@ -69,17 +69,41 @@ export function buildShareUrl(
   token: string,
   location: ShareUrlLocation = window.location,
 ): ShareUrlResult {
-  const path = `/s/${token}`;
+  const { base, warning } = resolvePublicBase(location);
+  return { url: `${base}/s/${token}`, warning };
+}
+
+/**
+ * 拼出邀请注册链接（`/register?invite=<token>`）。
+ * 与分享链接**同一套"手机上点得开"的规则**（用户 2026-10-02：不是所有人都能注册，
+ * 要靠管理员发这条链接），所以共用 resolvePublicBase，别各写一套。
+ */
+export function buildInviteUrl(
+  token: string,
+  location: ShareUrlLocation = window.location,
+): ShareUrlResult {
+  const { base, warning } = resolvePublicBase(location);
+  return { url: `${base}/register?invite=${encodeURIComponent(token)}`, warning };
+}
+
+/** 对外基地址（不带路径）+ 需要提醒用户时的文案 */
+interface PublicBase {
+  base: string;
+  warning?: string;
+}
+
+/** 分享链接与邀请链接共用的"对外基地址" */
+function resolvePublicBase(location: ShareUrlLocation): PublicBase {
   const { origin, hostname } = location;
 
   if (!LOCAL_HOSTNAMES.has(hostname)) {
-    return { url: `${origin}${path}` };
+    return { base: origin };
   }
 
   const fromServer = serverLanBase(location);
   if (fromServer) {
     return {
-      url: `${fromServer}${path}`,
+      base: fromServer,
       warning: `你正在用本机地址（127.0.0.1）打开页面，已自动换成当前的局域网地址（${serverLanAddress}）—— 这样别人手机才能打开；换网络后这个地址会自动更新，不用重启。`,
     };
   }
@@ -87,13 +111,13 @@ export function buildShareUrl(
   const lanUrl = injectedLanUrl();
   if (lanUrl) {
     return {
-      url: `${lanUrl}${path}`,
+      base: lanUrl,
       warning: '你正在用本机地址（127.0.0.1）打开页面，已自动换成局域网地址 —— 这样别人手机才能打开。',
     };
   }
 
   return {
-    url: `${origin}${path}`,
+    base: origin,
     warning:
       '这条链接在别人手机上打不开。请改用局域网地址重新打开本页面（启动脚本会打印「手机打开」那个地址），再生成链接。',
   };

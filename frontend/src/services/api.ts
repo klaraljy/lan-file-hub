@@ -79,11 +79,18 @@ function unwrap<T>(envelope: ApiEnvelope<T>): T {
 }
 
 export const authApi = {
-  async register(username: string, email: string, password: string): Promise<AuthPayload> {
+  async register(
+    username: string,
+    email: string,
+    password: string,
+    /** 邀请制注册：管理员发的邀请 token（关闭自助注册时必填） */
+    inviteToken?: string,
+  ): Promise<AuthPayload> {
     const response = await http.post<ApiEnvelope<AuthPayload>>('/auth/register', {
       username,
       email,
       password,
+      ...(inviteToken ? { invite_token: inviteToken } : {}),
     });
     return unwrap(response.data);
   },

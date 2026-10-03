@@ -31,6 +31,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../features/auth/AuthContext';
+import { InvitePanel } from '../components/InvitePanel';
 import { formatBytes } from '../features/files/listView';
 import { ApiError } from '../services/api';
 import { adminApi } from '../services/adminApi';
@@ -358,6 +359,8 @@ export function AdminPage() {
       <Tabs
         items={[
           { key: 'users', label: '用户管理', children: <UsersTab /> },
+          // 邀请制注册（用户 2026-10-02）：管理员发链接，别人凭链接才能注册
+          { key: 'invites', label: '邀请注册', children: <InvitePanel /> },
           { key: 'storage', label: '存储统计', children: <StorageTab /> },
           { key: 'audit', label: '审计日志', children: <AuditTab /> },
         ]}

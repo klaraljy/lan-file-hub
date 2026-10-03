@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildShareUrl, setServerLanAddress } from '../src/services/publicUrl';
+import { buildInviteUrl, buildShareUrl, setServerLanAddress } from '../src/services/publicUrl';
 
 /**
  * 分享链接必须"别人手机点得开"。
@@ -128,5 +128,37 @@ describe('buildShareUrl', () => {
     expect(result.url.endsWith('/s/tok123')).toBe(true);
     expect(result.url.startsWith('http://localhost')).toBe(true);
     expect(result.warning).toBeTruthy();
+  });
+});
+
+describe('buildInviteUrl（邀请链接，与分享链接同一套规则）', () => {
+  it('本机地址打开时：换成服务端上报的局域网地址，路径是 /register?invite=', () => {
+    setServerLanAddress('10.200.18.61');
+
+    const result = buildInviteUrl('tok-abc', {
+      origin: 'http://127.0.0.1:9180',
+      hostname: '127.0.0.1',
+    });
+
+    expect(result.url).toBe('http://10.200.18.61:9180/register?invite=tok-abc');
+    expect(result.warning).toBeTruthy();
+  });
+
+  it('token 会被 URL 编码（不会拼出坏链接）', () => {
+    setServerLanAddress('192.168.1.9');
+
+    expect(
+      buildInviteUrl('a b&c', { origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' }).url,
+    ).toBe('http://192.168.1.9:9180/register?invite=a%20b%26c');
+  });
+
+  it('本来就是局域网地址访问时：直接用当前地址，不给提示', () => {
+    const result = buildInviteUrl('t', {
+      origin: 'http://192.168.1.5:9180',
+      hostname: '192.168.1.5',
+    });
+
+    expect(result.url).toBe('http://192.168.1.5:9180/register?invite=t');
+    expect(result.warning).toBeUndefined();
   });
 });

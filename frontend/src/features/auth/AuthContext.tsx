@@ -11,7 +11,13 @@ interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   login: (identifier: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    /** 邀请制注册：邀请链接里的 token（关闭自助注册时必填） */
+    inviteToken?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -71,12 +77,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authenticated');
   }, []);
 
-  const register = useCallback(async (username: string, email: string, password: string) => {
-    const payload = await authApi.register(username, email, password);
-    tokenStore.set(payload.access_token);
-    setUser(payload.user);
-    setStatus('authenticated');
-  }, []);
+  const register = useCallback(
+    async (username: string, email: string, password: string, inviteToken?: string) => {
+      const payload = await authApi.register(username, email, password, inviteToken);
+      tokenStore.set(payload.access_token);
+      setUser(payload.user);
+      setStatus('authenticated');
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     try {

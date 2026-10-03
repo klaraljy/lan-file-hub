@@ -160,7 +160,29 @@
 - HSTS **仅在连接确实走 TLS 时**下发（明文 HTTP 下下发会把站点锁死）；本服务不自建 TLS，HTTPS 交给反向代理，见 `deployment.md`。
 - 验收：`e2e-phase12.ps1` 场景 I（11 项）覆盖预检、白名单外来源、CORS 头、安全头与 HSTS 缺席。
 
-## 9. 病毒扫描现状
+## 9. 邀请制注册（2026-10-02，用户明确要求）
+
+**不是所有人都能注册**：默认仍允许自助注册（个人自用），把 `ALLOW_SELF_REGISTRATION` 设成 `false`
+之后，注册必须带一条管理员发的有效邀请。
+
+- **token 只存哈希**：与分享链接同一条口径 —— 库里只有 `invites.token_hash`（SHA-256），
+  明文只在 `POST /api/v1/admin/invites` 的响应里出现一次；列表接口**不返回** token。
+  单元测试 `InviteTest.TokenHashIsStableAndHidesPlaintext`、集成测试
+  `InviteFlowTest.StoresOnlyHashNotPlaintext` 守着这两点。
+- **消耗是原子的**：一条 `UPDATE ... WHERE used_count < max_uses AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > now())`，并发下不会把一条邀请用超；
+  注册失败（用户名被占用等）会把次数**归还**，不白吃一次。
+- **错误码分开**：token 根本不存在 → `404 RESOURCE_NOT_FOUND`；过期/用完/撤销 → `400 INVITE_INVALID`。
+  分开是为了不让外部靠错误码枚举"哪条邀请还存在"。
+- **日志不记明文**：只记 `invite_id` 与 token 哈希前 8 位。
+- 建/查/撤销邀请**只有管理员**能做（后端判角色；前端不显示按钮不算控制）。
+- 参数上限：`max_uses` 1–1000、有效期 5 分钟–1 年、备注 ≤ 200 字，越界一律 `INVALID_ARGUMENT`。
+
+实测（2026-10-02，便携实例真实 HTTP）：公开校验 200、乱填 token 404、用邀请注册 200、
+**重复使用 400**、关掉自助注册后不带邀请 **403 INVITE_REQUIRED**、带邀请 200、撤销后 400、
+列表不含 token；界面上"关闭自助注册"时注册按钮变灰并写明原因。
+
+## 10. 病毒扫描现状
 
 **本项目没有真实病毒扫描能力。** 阶段十二只落地了接口与空实现，并把钩子真正接进了上传完成路径：
 
