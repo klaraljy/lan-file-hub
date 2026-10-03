@@ -247,6 +247,42 @@ TEST_F(UploadFlowTest, ChunkedUploadVerifiesHashAndBuildsContentAddressedObject)
   EXPECT_FALSE(ChunkDirExists(upload_id));
 }
 
+// 同名自动加 (1)、(2)…（用户 2026-10-03 明确要求："相同名字的文件加一个 (1) 呢，
+// 再多一个变成 (2) 呢"）。这条行为**此前没有任何后端测试**：集成套件里那条断言
+// "同名被拒"的老用例在改完之后变红，才把它暴露出来（见 dedup_quota_test.cpp 里那条的说明）。
+TEST_F(UploadFlowTest, SameNameUploadGetsASuffixInsteadOfBeingRejected) {
+  const std::string payload = Repeat('s', 2048);
+  const std::vector<std::string> expected = {"同名.txt", "同名 (1).txt", "同名 (2).txt"};
+
+  for (std::size_t round = 0; round < expected.size(); ++round) {
+    // 每一轮都用**同一个**文件名发起上传：服务端要自己排下去，不能报冲突
+    auto created = CreateSession("同名.txt", payload, root_id_);
+    ASSERT_TRUE(created.Ok()) << "第 " << round + 1 << " 次同名上传被拒了："
+                              << created.GetError().message;
+    EXPECT_EQ(created.Value().session.file_name, expected[round]);
+
+    const std::string upload_id = created.Value().session.id;
+    const auto parts = Split(payload);
+    for (std::uint32_t index = 0; index < parts.size(); ++index) {
+      ASSERT_TRUE(PutChunk(upload_id, index, parts[index]).Ok());
+    }
+    auto completed = uploads_->Complete(Owner(), upload_id);
+    ASSERT_TRUE(completed.Ok()) << completed.GetError().message;
+    EXPECT_EQ(completed.Value().original_name, expected[round])
+        << "落库的名字必须是排下去的那个（同名文件同时存在，谁也不覆盖谁）";
+  }
+
+  // 三份都在，名字各不相同（FolderService::ListChildren 只列子文件夹，这里要查文件）
+  auto total = files_->CountByFolder(root_id_);
+  ASSERT_TRUE(total.Ok()) << total.GetError().message;
+  EXPECT_EQ(total.Value(), 3U);
+  for (const auto& name : expected) {
+    auto exists = files_->ExistsWithName(root_id_, name);
+    ASSERT_TRUE(exists.Ok()) << exists.GetError().message;
+    EXPECT_TRUE(exists.Value()) << "缺少：" << name;
+  }
+}
+
 TEST_F(UploadFlowTest, CompleteIsIdempotent) {
   const std::string payload = Repeat('b', kChunk + 7);
   auto created = CreateSession("idem.bin", payload, root_id_);

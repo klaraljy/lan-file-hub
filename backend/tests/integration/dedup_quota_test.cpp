@@ -461,10 +461,25 @@ TEST_F(DedupQuotaTest, QuotaIsNotAffectedByFailedUpload) {
   ASSERT_TRUE(uploaded.Ok()) << uploaded.GetError().message;
   const std::uint64_t before = UsedBytes(owner_.id);
 
-  // 同名文件被拒（RESOURCE_CONFLICT）时不能改变用量
-  auto duplicated = Upload(Owner(), root_id_, "ok.bin", Repeat('k', kMiB));
-  ASSERT_FALSE(duplicated.Ok());
-  EXPECT_EQ(UsedBytes(owner_.id), before);
+  // 一个**确定会失败**的上传：超过单文件大小上限，创建会话时就被拒。
+  // ⚠️ 这里原来用的是"同名文件被拒"，但 2026-10-03 起同名会自动加 (1)（用户明确要求），
+  //    那条路已经不失败了 —— 换成"超过单文件上限"这条确定失败的路径，
+  //    验证的性质完全不变：**失败的上传绝不能改变已用容量**。
+  UploadServiceOptions strict_options = Options();
+  strict_options.max_file_size_bytes = kMiB;  // 上限压到 1 MiB
+  auto strict = std::make_shared<UploadService>(*sessions_, *files_, *folders_, *users_, *storage_,
+                                                *permissions_, strict_options);
+
+  CreateUploadRequest request;
+  request.folder_id = root_id_;
+  request.file_name = "too-big.bin";
+  request.mime_type = "application/octet-stream";
+  request.total_size = 2 * kMiB;  // 超过上限
+  request.chunk_size = kChunk;
+
+  auto rejected = strict->CreateSession(Owner(), request);
+  ASSERT_FALSE(rejected.Ok()) << "超过单文件上限必须被拒";
+  EXPECT_EQ(UsedBytes(owner_.id), before) << "被拒绝的上传不能改变用量";
 }
 
 TEST_F(DedupQuotaTest, RejectsUploadWhenDiskReserveIsNotMet) {
