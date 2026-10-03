@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,32 @@ TEST(LoadConfigTest, WebRootIsEmptyByDefaultAndReadFromEnv) {
   const auto loaded = LoadConfig(dir.File("web.env"));
   ASSERT_TRUE(loaded.Ok()) << loaded.GetError().message;
   EXPECT_EQ(loaded.Value().config.web_root, "web");
+}
+
+// 配套安卓安装包的位置（用户 2026-10-03）：显式 APP_APK_PATH 优先；
+// 没配就跟着 WEB_ROOT 走（便携包 = app\web\downloads\lan-file-hub.apk）；两者都没有 = 空。
+TEST(LoadConfigTest, AppApkPathFollowsWebRootUnlessOverridden) {
+  testing::TempDir dir("config_apk");
+
+  const auto unspecified = LoadConfig(dir.File("missing.env"));
+  ASSERT_TRUE(unspecified.Ok()) << unspecified.GetError().message;
+  EXPECT_TRUE(unspecified.Value().config.app_apk_path.empty());
+
+  dir.WriteFile("web.env", "WEB_ROOT=web\n");
+  const auto by_web_root = LoadConfig(dir.File("web.env"));
+  ASSERT_TRUE(by_web_root.Ok()) << by_web_root.GetError().message;
+  EXPECT_EQ(
+      by_web_root.Value().config.app_apk_path,
+      (std::filesystem::absolute("web") / "downloads" / "lan-file-hub.apk").lexically_normal());
+
+  dir.WriteFile("apk.env",
+                "WEB_ROOT=web\n"
+                "APP_APK_PATH=D:/somewhere/else/lan-file-hub.apk\n");
+  const auto explicit_path = LoadConfig(dir.File("apk.env"));
+  ASSERT_TRUE(explicit_path.Ok()) << explicit_path.GetError().message;
+  EXPECT_TRUE(explicit_path.Value().config.app_apk_path.is_absolute());
+  EXPECT_EQ(explicit_path.Value().config.app_apk_path.filename().string(), "lan-file-hub.apk");
+  EXPECT_EQ(explicit_path.Value().config.app_apk_path.parent_path().filename().string(), "else");
 }
 
 TEST(LoadConfigTest, RejectsOutOfRangePort) {

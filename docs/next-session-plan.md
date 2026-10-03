@@ -17,6 +17,30 @@
 
 ---
 
+## 10. ✅ 已做：网页「我的」里的「配套手机应用下载」入口（2026-10-03，用户要求"改完就更新的"）
+
+**用户口径**：网页「我的」里要有一个**永远指向最新 APK** 的入口 —— 重新构建 App 之后，
+刷新网页，卡片上的**大小/时间就是新的**；不许手工拷文件、不许重启后端。
+
+**三段分工（这就是"改完就更新"的机制）**
+
+| 谁 | 做什么 |
+|---|---|
+| `scripts\build-android.ps1` | 出包后写侧车 `android\lan-file-hub-share.apk.json`（版本/大小/构建时间/SHA-256），并**自动同步**到 `portable\app\web\downloads\lan-file-hub.apk`（旧的手工副本 `web\lan-file-hub.apk` 会被清理）。新增开关：`-PublishOnly`（只同步不构建）、`-SkipPublish` |
+| 后端 | `GET /api/v1/app/release`（版本/大小/时间/SHA-256/下载地址）与 `GET /api/v1/app/download`（octet-stream + `Content-Disposition`）。**每次请求现看磁盘**，文件没换才用缓存；位置见新配置 `APP_APK_PATH`（留空 = `<WEB_ROOT>/downloads/lan-file-hub.apk`）。这两个端点**不需要登录**（理由写在 `app_release_controller.h`：装 App 不该先登录，APK 不含用户数据） |
+| 前端 | 「我的」页新增卡片（`pages/MyPage.tsx` 的 `PhoneAppCard`）：`版本 · 大小 · 构建时间` + 「下载安装」原生下载按钮；电脑上多一个「用手机扫码安装」（复用 `ResponsiveSheet` + `ShareLinkBox`，二维码里是局域网地址）。地址走 `publicUrl.ts` 的 `buildAppDownloadUrl`（与分享链接同一套规则） |
+
+**测试**：后端单元 +7（`AppReleaseTest` 6 条：缺文件/侧车优先但**大小以真实文件为准**/无侧车退化/
+侧车坏掉不崩/**换包后立刻给新值**/空路径；`LoadConfigTest` 1 条：`APP_APK_PATH` 默认跟随 `WEB_ROOT`）。
+前端纯函数单测 +9（大小、时间、拼行、兜底、局域网地址替换）。
+
+**这一步之后还剩的活**（按优先级）：
+1. 「最近文件」接口的**集成测试**（见本文件开头那条遗留）——仍未补；
+2. 单次上传路径与"回收站恢复同名"的命名策略统一（回收站那条**有意保持拒绝**）；
+3. 真机：用户手机装新 APK、手机热点下扫码、5 GB 大文件（**只有用户能验**）。
+
+---
+
 ## 9. ✅ 已修：同名文件自动加 (1)、(2)…（用户 2026-10-03 实测并提出）
 
 **用户原话**：「我刚刚就试着上传了已更新后的 apk，但是显示上传失败，不能有同名文件，

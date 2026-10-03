@@ -932,6 +932,53 @@ GET /api/v1/system/network
 - 前端拿到后拼 `http://<lan_address>:<当前页面端口>`（便携包 9180、开发 5173），
   见 `frontend/src/services/publicUrl.ts` 与 `networkApi.ts`。
 
+## 配套手机应用端点（安卓安装包，2026-10-03 新增）
+
+```text
+GET /api/v1/app/release     安装包信息：版本 / 大小 / 构建时间 / SHA-256 / 下载地址
+GET /api/v1/app/download    下载安装包本身（application/octet-stream）
+```
+
+用户要求（2026-10-03）：网页「我的」里要有一个**永远指向最新 APK** 的入口，而且"改完就更新的" ——
+重新构建一次 App、刷新网页，卡片上的大小与时间就必须跟着变。所以：
+
+- 信息**不写死**：后端每次请求现看磁盘上的安装包（位置见 `APP_APK_PATH`，
+  便携包默认 `WEB_ROOT/downloads/lan-file-hub.apk`）。大小与时间取自**真实文件**，
+  版本号与构建时间取自构建脚本写出的同名侧车（`lan-file-hub.apk.json`）——
+  ⛔ 但**只有侧车与磁盘上这个包的字节数一致时才采信它**，否则整体忽略（版本号空着、时间用文件时间）：
+  实测踩到过"只换包不换侧车 → 卡片显示新的大小配旧的时间"这种自相矛盾的组合；
+  `sha256` **一律对真实文件现算**（只在这个包变化时算一次），不照抄侧车；
+- 文件没换（大小 + 修改时间都没变）就复用上次算好的结果，换了立刻重算，**不需要重启后端**；
+- `scripts\build-android.ps1` 出包后**自动**写侧车并同步到下载位置 —— 这就是"改完就更新的"。
+
+这两个端点**不需要登录**（有意为之，不是漏加中间件）：装 App 这一步不该先登录
+（手机上可能是系统浏览器/文件管理器直接打开下载地址），而 APK 是客户端程序本身、
+不含任何用户数据（前端静态资源本来就是公开的）。用户数据仍然一律走 `AuthFilter` 与服务端权限校验。
+
+```json
+{
+  "data": {
+    "available": true,
+    "file_name": "lan-file-hub.apk",
+    "version_name": "1.0",
+    "version_code": 1,
+    "size_bytes": 346945,
+    "built_at": "2026-10-03T01:01:18Z",
+    "sha256": "5308c13e4bb4ebb81c3f7ee5fa4bb53f04e79cf90c8dc3d272f20eee0094d263",
+    "download_path": "/api/v1/app/download"
+  },
+  "request_id": "uuid"
+}
+```
+
+- 服务器上还没有安装包时：本接口仍返回 **200** 且 `available: false`（前端显示
+  "这台服务器上还没有准备好安装包"），下载接口返回 **404 `RESOURCE_NOT_FOUND`**；都不报 500。
+- 下载响应带 `Content-Disposition: attachment`（文件名已净化，见 `BuildContentDisposition`）
+  与 `Cache-Control: no-cache`：浏览器/手机点一下就是**原生下载**（流式落盘，不走 blob），
+  重新构建之后拿到的一定是新包。
+- 前端拼下载地址时走 `frontend/src/services/publicUrl.ts` 的**同一套"手机点得开"规则**
+  （`buildAppDownloadUrl`）：电脑上用 127.0.0.1 打开时会换成局域网地址，二维码扫了才下得到。
+
 ## 在线状态端点（广场，2026-09-21 新增）
 
 ```text

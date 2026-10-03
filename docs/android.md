@@ -116,7 +116,32 @@ android:usesCleartextTraffic="true"   ← Android 9+ 必须；局域网全是明
 「装到手机上、开热点、对方扫码下载」这条真实链路**没有跑过**；手机热点下的实际速度也没测。
 
 
-## 5. 已知限制
+## 5. 出包与"网页下载入口"的联动（2026-10-03 新增）
+
+用户要求：网页「我的」里要有一个**永远指向最新 APK** 的入口，而且"**改完就更新的**" ——
+重新构建一次 App、刷新网页，卡片上的大小与时间就必须跟着变，不需要重启后端、也不许手工拷文件。
+
+**谁负责什么**
+
+| 角色 | 做什么 |
+|---|---|
+| `scripts\build-android.ps1` | 出包后写侧车 `android\lan-file-hub-share.apk.json`（版本/大小/构建时间/SHA-256），并把 APK + 侧车**自动同步**到 `portable\app\web\downloads\lan-file-hub.apk`（旧的手工副本 `portable\app\web\lan-file-hub.apk` 会被清理掉） |
+| 后端 `GET /api/v1/app/release` | **每次请求现看磁盘**：大小 / 时间 / SHA-256 都来自真实文件（SHA-256 只在这个包变化时算一次）；版本号与构建时间取自侧车，**且要求侧车与包的字节数一致**（对不上就整体忽略，免得出现"新包 + 旧版本号/旧时间"）。文件没换就复用缓存 |
+| 后端 `GET /api/v1/app/download` | 流式发安装包，带 `Content-Disposition: attachment` 与 `application/octet-stream` |
+| 网页「我的」→「配套手机应用」 | 显示 `版本 · 大小 · 构建时间` + 「下载安装」按钮；电脑上还给出二维码（复用 `ShareLinkBox`），手机扫一下直接下载 |
+
+**两条命令**
+
+```powershell
+.\scripts\build-android.ps1              # 出包 + 自动同步（改完 App 就跑这个）
+.\scripts\build-android.ps1 -PublishOnly # 不重新构建，只把现有 APK 同步过去（换机器/补文件时用）
+.\scripts\build-android.ps1 -SkipPublish # 只出包，不同步（不想动便携包时用）
+```
+
+**验收口径**：重新构建一次 → 刷新网页「我的」→ 卡片上的**大小与时间变了** → 点「下载安装」
+（或扫二维码）拿到的就是新包。数字来自磁盘，所以构建脚本换包之后**不用重启后端**。
+
+## 6. 已知限制
 
 - **连接器是"内置浏览器 + 地址簿"**：文件列表/上传/下载全部由电脑端网页提供，所以
   **电脑没开、或不在同一个网络时，App 里什么也打不开**（列表会显示"离线"）。

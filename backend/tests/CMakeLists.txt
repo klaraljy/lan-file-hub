@@ -27,6 +27,7 @@ add_executable(lan_file_hub_unit_tests
   unit/net_test.cpp
   unit/presence_registry_test.cpp
   unit/invite_test.cpp
+  unit/app_release_test.cpp
 )
 
 target_include_directories(lan_file_hub_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -282,6 +282,24 @@ Result<ConfigLoadResult> LoadConfig(const std::filesystem::path& dotenv_path) {
     return ConfigError("STORAGE_ROOT 无法规范化为绝对路径", storage_root);
   }
 
+  // ---- 配套手机应用（安卓安装包）的下载位置 ----
+  // 显式配置优先；没配就跟着前端托管目录走（便携包 = app\web\downloads\lan-file-hub.apk）。
+  // 两条都没有时不报错：接口会如实回报"还没有安装包"，服务照常可用。
+  const std::string app_apk = Trim(PickString(dotenv, "APP_APK_PATH", ""));
+  if (!app_apk.empty()) {
+    config.app_apk_path = std::filesystem::absolute(app_apk, ec).lexically_normal();
+    if (ec) {
+      return ConfigError("APP_APK_PATH 无法规范化为绝对路径", app_apk);
+    }
+  } else if (!config.web_root.empty()) {
+    config.app_apk_path =
+        (std::filesystem::absolute(config.web_root, ec) / "downloads" / "lan-file-hub.apk")
+            .lexically_normal();
+    if (ec) {
+      config.app_apk_path.clear();
+    }
+  }
+
   auto max_file =
       PickUint(dotenv, "MAX_FILE_SIZE", 10ULL * 1024 * 1024 * 1024, 1, kMaxAllowedFileSize);
   if (!max_file) {

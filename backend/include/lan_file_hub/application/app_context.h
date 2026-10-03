@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "lan_file_hub/application/admin_service.h"
+#include "lan_file_hub/application/app_release.h"
 #include "lan_file_hub/application/auth_service.h"
 #include "lan_file_hub/application/cleanup_service.h"
 #include "lan_file_hub/application/file_scanner.h"
@@ -90,6 +91,9 @@ struct AppContext {
 
   // 在线状态（五阶段改造 ⑤：广场 / 在线用户）——进程内存，不落库、重启即清空
   std::shared_ptr<PresenceRegistry> presence;
+
+  // 配套手机应用的安装包信息（用户 2026-10-03）：每个请求现看磁盘，重新构建后不用重启
+  std::shared_ptr<AppRelease> app_release;
 
   // 需要脱敏的值（数据库口令、Redis 口令、JWT 密钥），日志与错误信息输出前必须过滤
   std::vector<std::string> secrets;

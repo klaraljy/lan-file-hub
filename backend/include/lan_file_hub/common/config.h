@@ -47,6 +47,13 @@ struct AppConfig {
   // 这样便携包里**不需要 Node.js**，只有一个端口、一个进程。
   std::string web_root;
 
+  // 安卓安装包的位置（用户 2026-10-03：网页「我的」里要有"配套手机应用下载"入口）。
+  // 下载接口从这里**现读**文件（大小/时间/SHA-256 都由文件本身决定），
+  // 所以 `scripts\build-android.ps1` 重新出包之后，网页刷新一下就是新的数字，**不用重启后端**。
+  // 留空 = 用默认位置：配了 WEB_ROOT 时是 <WEB_ROOT>/downloads/lan-file-hub.apk；
+  // 两者都没有时接口如实回报 available=false（"服务器上还没有安装包"），不会 500。
+  std::filesystem::path app_apk_path;  // 已规范化为绝对路径；空 = 未配置
+
   DatabaseConfig database;
   RedisConfig redis;
   StorageConfig storage;

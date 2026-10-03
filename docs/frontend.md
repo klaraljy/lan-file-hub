@@ -373,6 +373,7 @@ QUOTA_EXCEEDED
 | 应用外壳 `app/AppLayout.tsx` | **底部 Tab 栏是导航主入口**（不再用汉堡菜单）；顶栏只留品牌 + 用户名 + 角色标签；内容区底部按 Tab 栏高度留白（`TAB_BAR_HEIGHT + 20`） |
 | 底部 Tab `app/MobileTabBar.tsx` | `文件 / 分享给我的 / 我的` 三个 Tab，每个 1/3 宽、56px 高；**第 4 个位置留给以后的「广场」**（往 `navigation.ts` 的 `MOBILE_TABS` 加一项即可，布局自动均分）；按钮显式给 `aria-label`，否则可访问名会带上图标的 `aria-label`（如 "folder 文件"） |
 | 「我的」页 `pages/MyPage.tsx` | 最近文件 / 回收站 / 设置（管理员多一项系统管理）+ 退出登录；一行一个、≥60px、整行可点 |
+| 「配套手机应用」卡片 `pages/MyPage.tsx` 的 `PhoneAppCard` | 2026-10-03 新增：显示**版本 · 大小 · 构建时间**（全部来自 `GET /api/v1/app/release`，每次进页面重拉，不写死）+ 「下载安装」原生下载按钮；电脑上多一个「用手机扫码安装」（`ResponsiveSheet` + `ShareLinkBox`，二维码里是局域网地址，见 `services/publicUrl.ts` 的 `buildAppDownloadUrl`）。服务器上没有安装包时显示"还没有准备好安装包"，不弹错误 |
 | 文件页 `pages/FilesPage.tsx` | 列表视图用**卡片列表**；**搜索框固定在顶部**（滚动时也随时能过滤）；工具栏换行排布 |
 | 卡片 `components/FileCardList.tsx` | **整张卡可点**（文件夹进入、文件看详情，右侧有 `>` 提示）；名字 16px；**「发送给…」保持显眼主按钮**（AGENTS.md §14.3，不可降级）；下载/详情/版本/分享/权限/删除收进「更多」下拉，删除仍走二次确认；容器底部留 88px，最后一张不会被悬浮条挡住 |
 | 上传 `components/UploadPanel.tsx` | **首屏不再有上传区**：没任务时是右下角**悬浮「上传」按钮**；有任务时是**悬浮进度条**（文件名 + 进度 + 取消 + 添加 + 全部）；全部结束后收成一条「上传完成 N 个 / 继续上传 / 查看 / ×」；点「全部」用底部面板列任务（暂停/继续/取消/移除） |

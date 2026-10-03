@@ -200,6 +200,24 @@ int main(int /*argc*/, char** /*argv*/) {
   }
   // 在线状态（五阶段改造 ⑤：广场）：进程内存 + 心跳超时，不落库、重启即清空
   context->presence = std::make_shared<PresenceRegistry>();
+  // 配套手机应用的安装包（用户 2026-10-03）：只记路径，每次请求现看磁盘，
+  // 所以 scripts\build-android.ps1 重新出包之后网页刷新就是新数字，不用重启后端
+  context->app_release = std::make_shared<AppRelease>(config.app_apk_path);
+  if (config.app_apk_path.empty()) {
+    spdlog::info(
+        "未配置安卓安装包位置（APP_APK_PATH / WEB_ROOT 都没有）：下载入口会显示"
+        "「还没有安装包」");
+  } else {
+    const auto release = context->app_release->Describe();
+    if (release.available) {
+      spdlog::info("安卓安装包 | path={} | version={} | size={} 字节 | built_at={}",
+                   config.app_apk_path.string(), release.version_name, release.size_bytes,
+                   release.built_at);
+    } else {
+      spdlog::info("安卓安装包尚未构建 | 期望位置={}（跑一次 scripts\\build-android.ps1 就有了）",
+                   config.app_apk_path.string());
+    }
+  }
   SetAppContext(context);
   if (!config.IsProduction() && config.jwt_secret.empty()) {
     spdlog::warn("JWT_SECRET 未设置（开发环境可登录但 Token 无法签发；生产环境会拒绝启动）");

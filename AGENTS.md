@@ -75,7 +75,8 @@ lan-file-hub/
 ├── Dockerfile  docker-compose.yml  .env.example  .gitignore
 ├── android/                     # 安卓端「局域网快传」：App 内置轻量分享服务（两机互传，AGENTS §15 ③）
 │   ├── app/src/main/java/com/lanfilehub/share/   # ShareHttpServer / ShareController / ShareService / MainActivity / NetUtil
-│   └── lan-file-hub-share.apk   # 构建产物（可直接安装；由 scripts\build-android.ps1 生成）
+│   ├── lan-file-hub-share.apk   # 构建产物（可直接安装；由 scripts\build-android.ps1 生成）
+│   └── lan-file-hub-share.apk.json   # 侧车：版本/大小/构建时间/SHA-256，网页下载卡片读它（同上脚本生成）
 ├── backend/
 │   ├── include/lan_file_hub/{api,application,domain,infrastructure,storage,common}/
 │   ├── src/{api,application,domain,infrastructure,storage}/  src/main.cpp

@@ -39,6 +39,7 @@ add_library(lan_file_hub_core STATIC
   # application
   src/application/admin_service.cpp
   src/application/app_context.cpp
+  src/application/app_release.cpp
   src/application/auth_service.cpp
   src/application/file_service.cpp
   src/application/file_scanner.cpp
@@ -59,6 +60,7 @@ add_library(lan_file_hub_core STATIC
   src/api/http_metrics.cpp
   src/api/metrics_controller.cpp
   src/api/admin_controller.cpp
+  src/api/app_release_controller.cpp
   src/api/auth_controller.cpp
   src/api/auth_filter.cpp
   src/api/file_controller.cpp

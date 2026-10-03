@@ -23,6 +23,7 @@ DOWNLOAD_RATE_LIMIT
 LOG_LEVEL
 CORS_ALLOWED_ORIGINS
 WEB_ROOT
+APP_APK_PATH
 ```
 
 > `WEB_ROOT`（五阶段改造 ④）：留空 = 后端只提供 API（开发用 vite、生产用 nginx）；
@@ -30,6 +31,13 @@ WEB_ROOT
 > 前端路由（`/files`、`/shared`、`/s/<token>` 等）在找不到文件时回退 `index.html`，
 > 而 `/api/`、`/health`、`/metrics` 永不回退（保证前端拿到的是 JSON 而不是 HTML）。
 > 便携包就是靠它做到**单端口、单进程、不需要 Node.js**。
+
+> `APP_APK_PATH`（2026-10-03）：配套安卓安装包的位置，供 `GET /api/v1/app/release`
+> 与 `GET /api/v1/app/download` 使用。**留空**时跟着 `WEB_ROOT` 走
+> （`<WEB_ROOT>/downloads/lan-file-hub.apk`，便携包默认就是这样）；两个都没配时下载入口
+> 如实显示"还没有准备好安装包"，不影响其他功能。
+> 接口每次请求现看这个文件，所以 `scripts\build-android.ps1` 重新出包（它会把新包与
+> `lan-file-hub.apk.json` 侧车一起同步过去）之后**不需要重启后端**，刷新网页即可。
 
 ### 配置要求
 

@@ -86,6 +86,21 @@ export function buildInviteUrl(
   return { url: `${base}/register?invite=${encodeURIComponent(token)}`, warning };
 }
 
+/**
+ * 拼出"配套手机应用"的下载地址（用户 2026-10-03）。
+ *
+ * 同一个道理：电脑上用 127.0.0.1 打开时，链接/二维码必须是局域网地址，
+ * 手机扫了才装得上。所以这里也走 resolvePublicBase，**不要再自己拼一套**。
+ */
+export function buildAppDownloadUrl(
+  downloadPath: string,
+  location: ShareUrlLocation = window.location,
+): ShareUrlResult {
+  const { base, warning } = resolvePublicBase(location);
+  const path = downloadPath.startsWith('/') ? downloadPath : `/${downloadPath}`;
+  return { url: `${base}${path}`, warning };
+}
+
 /** 对外基地址（不带路径）+ 需要提醒用户时的文案 */
 interface PublicBase {
   base: string;
