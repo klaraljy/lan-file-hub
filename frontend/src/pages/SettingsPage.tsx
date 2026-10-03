@@ -10,6 +10,7 @@
 import { App as AntApp, Card, Descriptions, Progress, Space, Switch, Tag, Typography } from 'antd';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
+import { PhoneAccessCard } from '../components/PhoneAccessCard';
 import { PhoneAppDownload } from '../components/PhoneAppDownload';
 import { formatBytes } from '../features/files/listView';
 import { useAuth } from '../features/auth/AuthContext';
@@ -105,6 +106,9 @@ export function SettingsPage() {
           </Typography.Text>
         </Space>
       </Card>
+
+      {/* 手机怎么连（2026-10-03 用户要求）：地址 + 二维码放在网页里，不用去翻托盘提示 */}
+      <PhoneAccessCard />
 
       <Card title="配套手机应用（安卓）">
         {/* 电脑上也能找到下载位置（用户 2026-10-03 要求："电脑上也要有可以下载的位置可以在设置里面弄一个"） */}

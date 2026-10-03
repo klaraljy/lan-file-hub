@@ -22,9 +22,30 @@ const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
  */
 let serverLanAddress = '';
 
+/**
+ * 订阅"局域网地址变了"（2026-10-03「手机怎么连」卡片用）。
+ * 换网络后卡片上的地址和二维码要跟着变，用户不用刷新页面。
+ * 返回取消订阅的函数。
+ */
+const lanListeners = new Set<(address: string) => void>();
+
+export function subscribeServerLanAddress(listener: (address: string) => void): () => void {
+  lanListeners.add(listener);
+  return () => {
+    lanListeners.delete(listener);
+  };
+}
+
 /** 写入服务端上报的地址（空串 = 服务端没探到，例如没有默认路由） */
 export function setServerLanAddress(address: string): void {
-  serverLanAddress = address.trim();
+  const next = address.trim();
+  if (next === serverLanAddress) {
+    return;
+  }
+  serverLanAddress = next;
+  for (const listener of lanListeners) {
+    listener(next);
+  }
 }
 
 export function getServerLanAddress(): string {
@@ -99,6 +120,18 @@ export function buildAppDownloadUrl(
   const { base, warning } = resolvePublicBase(location);
   const path = downloadPath.startsWith('/') ? downloadPath : `/${downloadPath}`;
   return { url: `${base}${path}`, warning };
+}
+
+/**
+ * 拼出"手机打开本系统"的地址（2026-10-03「手机怎么连」卡片用）。
+ *
+ * ⛔ 不要图省事用 `window.location.origin`：电脑上用 127.0.0.1 打开时，
+ * 那个地址在手机上指的是手机自己，扫码必然打不开（AGENTS §14.4 的同一个坑）。
+ * 这里与分享链接共用 resolvePublicBase —— 换网络后地址会自动更新。
+ */
+export function buildSiteUrl(location: ShareUrlLocation = window.location): ShareUrlResult {
+  const { base, warning } = resolvePublicBase(location);
+  return { url: `${base}/`, warning };
 }
 
 /** 对外基地址（不带路径）+ 需要提醒用户时的文案 */

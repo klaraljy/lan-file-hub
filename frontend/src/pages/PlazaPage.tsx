@@ -41,6 +41,7 @@ import { sharingErrorMessage, sharingKeys } from '../features/sharing/useSharing
 import { ensureDeviceId, usePresenceHeartbeat } from '../features/presence/usePresence';
 import { filesApi } from '../services/filesApi';
 import { foldersApi } from '../services/foldersApi';
+import { buildSiteUrl } from '../services/publicUrl';
 import { sharingApi } from '../services/sharingApi';
 import type { OnlineUser } from '../services/presenceApi';
 import type { FileMeta } from '../types/file';
@@ -187,7 +188,9 @@ export function PlazaPage() {
   const otherDevices = (presence.data?.my_devices ?? []).filter(
     (device) => device.device_id !== myDeviceId,
   );
-  const siteUrl = window.location.origin;
+  // ⛔ 不能用 window.location.origin：电脑上用 127.0.0.1 打开时，
+  //    这个二维码在手机上是"打开手机自己"，必然打不开（与分享链接同一个坑，AGENTS §14.4）
+  const { url: siteUrl, warning: siteWarning } = buildSiteUrl();
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -296,7 +299,7 @@ export function PlazaPage() {
             用手机相机 / 微信「扫一扫」下面这个二维码，就能在手机上打开同一套服务；
             登录同一个账号即可看到同一批文件。
           </Typography.Paragraph>
-          <ShareLinkBox url={siteUrl} onCopy={(url) => void copySiteUrl(url)} />
+          <ShareLinkBox url={siteUrl} warning={siteWarning} onCopy={(url) => void copySiteUrl(url)} />
         </ResponsiveSheet>
       </Card>
 

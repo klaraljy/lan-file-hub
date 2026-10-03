@@ -414,7 +414,8 @@ QUOTA_EXCEEDED
 | 上传 `components/UploadPanel.tsx` | **首屏不再有上传区**：没任务时是右下角**悬浮「上传」按钮**；有任务时是**悬浮进度条**（文件名 + 进度 + 取消 + 添加 + 全部）；全部结束后收成一条「上传完成 N 个 / 继续上传 / 查看 / ×」；点「全部」用底部面板列任务（暂停/继续/取消/移除） |
 | **上传文件夹** `components/UploadPanel.tsx` + `features/uploads/folderUpload.ts`（2026-10-03） | 桌面端多一个「**选择文件夹上传**」按钮（`webkitdirectory`），并且**把文件夹拖进上传区**也会走同一条路（`DataTransferItem.webkitGetAsEntry()` 递归读）。上传前弹确认框「将上传 N 个文件、新建 M 个文件夹、共约 X MB」，确认后**按浅→深建目录**（同名目录复用，靠 409 判定），再把文件分批传到各自目录。纯逻辑（路径净化、目录链、上限 2000 个文件 / 32 层）在 `folderUpload.ts`，单测 12 条 |
 | 文件详情 `components/FileDetailDrawer.tsx`（2026-10-03） | 新增「**所在文件夹**」一行 + 「**跳过去**」按钮：详情里直接看到文件在哪个目录，点一下关掉抽屉并跳过去（用户要求"电脑端要有跳转的功能或者目录的位置"） |
-| 设置页 `pages/SettingsPage.tsx`（2026-10-03） | 新增两块：「**配套手机应用**」（与「我的」页共用 `PhoneAppDownload`，含下载/扫码）与「**文件存在哪**」（仅管理员：显示 `storage_root`、说明对象按 SHA-256 命名、提醒别手工删目录）。另外修正了原来写错的 Token 存储说明（现在默认 sessionStorage，勾了「记住我」才 localStorage） |
+| 设置页 `pages/SettingsPage.tsx`（2026-10-03） | 新增三块：「**手机怎么连**」（`components/PhoneAccessCard.tsx`：当前局域网地址 + 二维码 + 复制，换网络自动更新；附「扫码打不开/App 找不到电脑」的两条对号入座说明）、「**配套手机应用**」（与「我的」页共用 `PhoneAppDownload`，含下载/扫码）与「**文件存在哪**」（仅管理员：显示 `storage_root`、说明对象按 SHA-256 命名、提醒别手工删目录）。另外修正了原来写错的 Token 存储说明（现在默认 sessionStorage，勾了「记住我」才 localStorage） |
+| 对外地址一律走 `services/publicUrl.ts`（2026-10-03 补齐） | `buildShareUrl` / `buildInviteUrl` / `buildAppDownloadUrl` / **`buildSiteUrl`（整站地址，「手机怎么连」与广场二维码用）** 共用 `resolvePublicBase`：本机地址打开时自动换成服务端上报的局域网地址。⛔ **不要再用 `window.location.origin` 拼给手机用的链接** —— 电脑上用 127.0.0.1 打开时那是"手机自己"，扫码必然打不开（广场二维码原来就踩了这个坑）。地址变化用 `subscribeServerLanAddress` 通知，`hooks/useServerLanAddress.ts` 接进 React |
 | 弹层 `components/ResponsiveSheet.tsx` | 手机上一律**从底部滑出**（AntD `Drawer placement="bottom"`，高度 90%）；桌面端仍是居中 Modal。发送给… / 分享 / 权限 / 版本历史 / 新建与重命名文件夹 都走它 —— 只写一份内容，避免"手机版漏改一个" |
 | 网格 `components/FileGrid.tsx` | 列数自适应（手机 1 列 / 窄屏 2 列 / 宽屏更多）；图标按钮在手机上放大到 44px |
 | 详情 `components/FileDetailDrawer.tsx` | 宽度占满（`width="100%"`），操作按钮纵向排列、整行可点 |

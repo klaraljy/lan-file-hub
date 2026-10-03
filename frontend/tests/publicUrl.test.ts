@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildInviteUrl, buildShareUrl, setServerLanAddress } from '../src/services/publicUrl';
+import {
+  buildInviteUrl,
+  buildShareUrl,
+  buildSiteUrl,
+  setServerLanAddress,
+  subscribeServerLanAddress,
+} from '../src/services/publicUrl';
 
 /**
  * 分享链接必须"别人手机点得开"。
@@ -131,8 +137,69 @@ describe('buildShareUrl', () => {
   });
 });
 
-describe('buildInviteUrl（邀请链接，与分享链接同一套规则）', () => {
-  it('本机地址打开时：换成服务端上报的局域网地址，路径是 /register?invite=', () => {
+describe('buildSiteUrl（「手机怎么连」卡片用的整站地址，2026-10-03）', () => {
+  it('电脑上用 127.0.0.1 打开时：给出局域网地址，手机才打得开', () => {
+    setServerLanAddress('10.200.18.61');
+
+    const result = buildSiteUrl({ origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' });
+
+    expect(result.url).toBe('http://10.200.18.61:9180/');
+    expect(result.warning).toBeTruthy();
+  });
+
+  it('换网络后地址跟着变（校园网 ↔ 手机热点）', () => {
+    setServerLanAddress('10.200.18.61');
+    expect(buildSiteUrl({ origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' }).url).toBe(
+      'http://10.200.18.61:9180/',
+    );
+
+    setServerLanAddress('192.168.43.240');
+    expect(buildSiteUrl({ origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' }).url).toBe(
+      'http://192.168.43.240:9180/',
+    );
+  });
+
+  it('没有局域网地址时给警告，而不是给一个手机打不开的 127.0.0.1', () => {
+    vi.stubEnv('VITE_LFH_LAN_URL', '');
+    setServerLanAddress('');
+
+    const result = buildSiteUrl({ origin: 'http://127.0.0.1:9180', hostname: '127.0.0.1' });
+
+    expect(result.warning).toContain('手机');
+  });
+
+  it('本来就是局域网地址访问时：直接用当前地址', () => {
+    const result = buildSiteUrl({ origin: 'http://192.168.1.5:9180', hostname: '192.168.1.5' });
+    expect(result.url).toBe('http://192.168.1.5:9180/');
+    expect(result.warning).toBeUndefined();
+  });
+});
+
+describe('subscribeServerLanAddress（地址变化通知，卡片靠它自动更新）', () => {
+  it('地址变化时通知订阅者，重复设同一个值不重复通知', () => {
+    const seen: string[] = [];
+    const unsubscribe = subscribeServerLanAddress((address) => seen.push(address));
+
+    setServerLanAddress('10.200.18.61');
+    setServerLanAddress('10.200.18.61');
+    setServerLanAddress('192.168.43.240');
+
+    expect(seen).toEqual(['10.200.18.61', '192.168.43.240']);
+    unsubscribe();
+  });
+
+  it('取消订阅后不再收到通知（组件卸载后不能继续 setState）', () => {
+    const seen: string[] = [];
+    const unsubscribe = subscribeServerLanAddress((address) => seen.push(address));
+    unsubscribe();
+
+    setServerLanAddress('192.168.43.240');
+
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('buildInviteUrl（邀请链接，与分享链接同一套规则）', () => {  it('本机地址打开时：换成服务端上报的局域网地址，路径是 /register?invite=', () => {
     setServerLanAddress('10.200.18.61');
 
     const result = buildInviteUrl('tok-abc', {
