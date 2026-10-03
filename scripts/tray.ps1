@@ -79,15 +79,30 @@ function Test-Port([int]$Port, [int]$TimeoutMs = 400) {
   } catch { return $false } finally { $client.Close() }
 }
 
-# 本机局域网 IPv4（手机要用的那个地址）：跳过回环、169.254 与虚拟网卡
+# 本机局域网 IPv4（手机要用的那个地址）。
+# 用 .NET 直接枚举网卡（比 Get-NetIPAddress 快一个数量级）—— 托盘每 5 秒要查一次，
+# 用来发现**用户换了网络**（校园网 ↔ 手机热点）之后地址的变化，见 Update-LanAddressIfChanged。
+# 规则：优先取"已启用、非回环、**有默认网关**"的网卡（那才是手机能连上的那块，顺带排除
+# VMware/vEthernet 这类没有网关的虚拟网卡）；都没有时退回第一个非回环地址；彻底没有返回空串。
 function Get-LanAddress {
-  $candidates = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-    Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
-    Where-Object { $_.InterfaceAlias -notlike '*VMware*' -and $_.InterfaceAlias -notlike '*vEthernet*' -and $_.InterfaceAlias -notlike '本地连接*' }
-  $preferred = $candidates | Where-Object { $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1
-  if ($preferred) { return $preferred.IPAddress }
-  if ($candidates) { return ($candidates | Select-Object -First 1).IPAddress }
-  return ''
+  try {
+    $interfaces = @([System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+      Where-Object { $_.OperationalStatus -eq 'Up' -and $_.NetworkInterfaceType -ne 'Loopback' })
+    $fallback = ''
+    foreach ($nic in $interfaces) {
+      $properties = $nic.GetIPProperties()
+      $unicast = @($properties.UnicastAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' })
+      if ($unicast.Count -eq 0) { continue }
+      $address = $unicast[0].Address.IPAddressToString
+      if ($address -like '169.254.*') { continue }
+      if (-not $fallback) { $fallback = $address }
+      $gateway = @($properties.GatewayAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' })
+      if ($gateway.Count -gt 0) { return $address }
+    }
+    return $fallback
+  } catch {
+    return ''
+  }
 }
 
 # ---- 配置 --------------------------------------------------------------------
@@ -95,14 +110,31 @@ $HttpPort = [int](Read-DotEnvValue $EnvFile 'HTTP_PORT' '9080')
 $PgPort = [int](Read-DotEnvValue $EnvFile 'PGPORT' '55432')
 $RedisPort = [int](Read-DotEnvValue $EnvFile 'REDISPORT' '56379')
 $WebRoot = Read-DotEnvValue $EnvFile 'WEB_ROOT' ''
-$LanAddress = Get-LanAddress
+$script:LanAddress = Get-LanAddress
 # 打开网页时该用哪个端口：
 #   - 便携包：后端自己托管前端（WEB_ROOT），用 HTTP_PORT；
 #   - 开发形态：界面在 vite（5173）上，若它在跑就用 5173，否则退回后端端口。
 $WebPort = $HttpPort
 if (-not $IsPortable -and (Test-Port 5173)) { $WebPort = 5173 }
 $WebUrlLocal = 'http://127.0.0.1:' + $WebPort + '/'
-$WebUrlLan = if ($LanAddress) { 'http://' + $LanAddress + ':' + $WebPort + '/' } else { '' }
+$script:WebUrlLan = if ($script:LanAddress) { 'http://' + $script:LanAddress + ':' + $WebPort + '/' } else { '' }
+
+# 换网络之后地址自动跟着变（用户 2026-10-02：切网络后地址不变，难道每次都要重启？）。
+# 答案：**不用重启** —— 后端监听的是 0.0.0.0，换网络后照样在听，变的只是"该让手机打开哪个地址"。
+# 托盘每 5 秒调一次本函数；只有地址**真的变了**才打印一行，平时窗口保持安静。
+function Update-LanAddressIfChanged {
+  $current = Get-LanAddress
+  if ($current -eq $script:LanAddress) { return }
+  $script:LanAddress = $current
+  $script:WebUrlLan = if ($current) { 'http://' + $current + ':' + $WebPort + '/' } else { '' }
+  Write-Host ''
+  if ($current) {
+    Write-Host ('  [网络已变化] 手机现在请用： ' + $script:WebUrlLan) -ForegroundColor Yellow
+    Write-Host '                不用重启；手机连不上时确认电脑当前网络是"专用网络"、且防火墙放行了这个端口' -ForegroundColor DarkGray
+  } else {
+    Write-Host '  [网络已变化] 现在没有局域网地址（WiFi/网线断了？），手机暂时连不上' -ForegroundColor Yellow
+  }
+}
 
 function Get-StackStatus {
   $backendUp = Test-Port $HttpPort
@@ -157,6 +189,25 @@ function Start-Stack {
       $pgStartArgs = '-D "' + $PgData + '" -l "' + (Join-Path $LogDir 'postgres.log') + '" -o "-p ' + $PgPort + ' -h 127.0.0.1" start'
       Start-Process -FilePath $PgCtl -WindowStyle Hidden -ArgumentList $pgStartArgs -RedirectStandardOutput (Join-Path $LogDir 'pg-start.log') -RedirectStandardError (Join-Path $LogDir 'pg-start.err') | Out-Null
       for ($i = 0; $i -lt 40 -and -not (Test-Port $PgPort); $i++) { Start-Sleep -Milliseconds 500 }
+      # ⛔ **端口在听 ≠ 可以连**：PostgreSQL 启动时端口先打开，之后还要做恢复，这期间连它会报
+      #    「数据库系统正在启动」，后端一连就失败退出。2026-10-02 实测踩到：面板显示"数据库 [OK]、
+      #    后端 [--]"，日志里是 connection refused / the database system is starting up。
+      #    所以必须用 pg_isready 真正问到"accepting connections"再启动后端。
+      $pgIsReady = Join-Path $PortableRoot 'pgsql\bin\pg_isready.exe'
+      if ((Test-Path $pgIsReady) -and (Test-Port $PgPort)) {
+        for ($i = 0; $i -lt 40; $i++) {
+          & $pgIsReady -h 127.0.0.1 -p $PgPort *> (Join-Path $LogDir 'pg-isready.log')
+          if ($LASTEXITCODE -eq 0) { break }
+          Start-Sleep -Milliseconds 500
+        }
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host '  数据库端口通了但还不能接受连接，日志末尾：' -ForegroundColor Yellow
+          if (Test-Path (Join-Path $LogDir 'postgres.log')) {
+            Get-Content (Join-Path $LogDir 'postgres.log') -Encoding UTF8 -Tail 6 | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor DarkGray }
+          }
+          return $false
+        }
+      }
       if (-not (Test-Port $PgPort)) {
         Write-Host '  数据库没起来，日志末尾：' -ForegroundColor Yellow
         if (Test-Path (Join-Path $LogDir 'postgres.log')) {
@@ -291,6 +342,8 @@ function Show-Panel {
   }
   Write-Host ''
   Write-Host ('   数据库 ' + (Get-Mark $status.Postgres) + '   Redis ' + (Get-Mark $status.Redis) + '   后端 ' + (Get-Mark $status.Backend) + '   网页 ' + (Get-Mark $status.WebPage)) -ForegroundColor Gray
+  # 用户要求（2026-10-02）：看得见跑的是哪个 PowerShell —— 本机同时有 7.6.6 与 5.1，出问题要一眼分清
+  Write-Host ('   解释器：PowerShell ' + $PSVersionTable.PSVersion.ToString() + ' (' + $PSVersionTable.PSEdition + ')   端口 ' + $HttpPort) -ForegroundColor DarkGray
   if ($IsPortable -and (Test-Path (Join-Path $PortableRoot 'logs\bootstrap-admin.txt'))) {
     Write-Host '   管理员口令：见 logs\bootstrap-admin.txt（登录后改掉口令并删掉这个文件）' -ForegroundColor DarkGray
   }
@@ -342,9 +395,13 @@ function Show-Tray {
     # ⛔ 这个函数每 5 秒跑一次，**绝不许**在里面发 HTTP 请求或产生任何控制台输出
     #    （进度条/输出会让窗口一闪一闪）。只用 TCP 探活；
     #    HTTP 探测只放在 Show-Panel / Open-Web 这类一次性动作里。
+    # ⛔ 这个函数每 5 秒跑一次，**绝不许**在里面发 HTTP 请求或产生控制台输出
+    #    （进度条/输出会让窗口一闪一闪）。TCP 探活与网卡地址检查都是毫秒级、静默的；
+    #    地址真的变了才会打印一行（见 Update-LanAddressIfChanged）。
+    Update-LanAddressIfChanged
     $backendUp = Test-Port $HttpPort
     if ($backendUp) {
-      $notify.Text = 'lan-file-hub：运行中' + $(if ($WebUrlLan) { '（手机：' + $WebUrlLan + '）' } else { '' })
+      $notify.Text = 'lan-file-hub：运行中' + $(if ($script:WebUrlLan) { '（手机：' + $script:WebUrlLan + '）' } else { '' })
       $startItem.Enabled = $false
       $stopItem.Enabled = $true
     } else {
