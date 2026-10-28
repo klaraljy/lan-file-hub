@@ -578,4 +578,7 @@ cd frontend; npm test                  # 前端：Vitest，共 111 个用例
 
 ## 许可证
 
-尚未确定。在确定之前不会创建 `LICENSE` 文件。
+[MIT](LICENSE)。Copyright (c) 2026 klaraljy —— 可以自由学习、修改与复用，保留版权声明即可。
+
+> ⚠️ 拿去自用或二次开发前请注意：本期**没有集成真实的病毒扫描**（`NoopFileScanner`），
+> 生产 HTTPS 只给了 nginx 示例、没有端到端验证。这两块需要你自己补。

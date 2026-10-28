@@ -229,7 +229,7 @@ ninja / node / npm / git / docker   已在 PATH
 
 ## 11.1 Git、GitHub 与 CI（2026-09-12 首次发布时踩到的坑）
 
-仓库已发布：`https://github.com/klaraljy/lan-file-hub`（**私有**，默认分支 `main`）。
+仓库已发布：`https://github.com/klaraljy/lan-file-hub`（**已公开**，MIT；默认分支 `main`）。
 本地目录名与仓库名一致，远程为 `origin`。
 
 ### 推送
@@ -385,7 +385,7 @@ Git 远程仓库与上传留到项目末尾再做。
 
 | # | 事项 | 影响 | 谁来定 |
 |---|---|---|---|
-| 1 | 许可证类型 | 仓库产物，不影响开发 | 阶段十六发布前再定；私有自用可以不写 `LICENSE` |
+| 1 | 许可证类型 | 仓库产物，不影响开发 | **已定：MIT**（用户 2026-10-28 确认，随仓库公开） |
 
 许可证的取舍见 `docs/plan.md` §10。
 
